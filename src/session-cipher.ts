@@ -83,7 +83,7 @@ export class SessionCipher {
         encodedMsgWithMAC.set(new Uint8Array(mac, 0, 8), encodedMsg.byteLength + 1)
 
         const trusted = await this.storage.isTrustedIdentity(
-            this.remoteAddress.getName(),
+            this.remoteAddress.toString(),
             session.indexInfo.remoteIdentityKey,
             Direction.SENDING
         )
@@ -309,7 +309,7 @@ export class SessionCipher {
             }
 
             const trusted = await this.storage.isTrustedIdentity(
-                this.remoteAddress.getName(),
+                this.remoteAddress.toString(),
                 result.session.indexInfo.remoteIdentityKey,
                 Direction.RECEIVING
             )

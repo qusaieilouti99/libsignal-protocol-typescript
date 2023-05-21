@@ -19,7 +19,7 @@ export class SessionBuilder {
 
     processPreKeyJob = async (device: DeviceType): Promise<SessionType> => {
         const trusted = await this.storage.isTrustedIdentity(
-            this.remoteAddress.name,
+            this.remoteAddress.toString(),
             device.identityKey,
             Direction.SENDING
         )
@@ -257,7 +257,7 @@ export class SessionBuilder {
 
     async processV3(record: SessionRecord, message: PreKeyWhisperMessage): Promise<number | void> {
         const trusted = this.storage.isTrustedIdentity(
-            this.remoteAddress.name,
+            this.remoteAddress.toString(),
             uint8ArrayToArrayBuffer(message.identityKey),
             Direction.RECEIVING
         )
