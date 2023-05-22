@@ -96,6 +96,11 @@ export class SignalProtocolStore implements StorageType {
             util.arrayBufferToString(identityKey) === util.arrayBufferToString(trusted as ArrayBuffer)
         )
     }
+
+    addDevice(userId: string, device: number): void {
+
+    }
+
     async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
         let res = this.get('25519KeypreKey' + keyId, undefined)
         if (isKeyPairType(res)) {
