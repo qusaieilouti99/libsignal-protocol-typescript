@@ -249,6 +249,8 @@ export class SessionCipher {
             const plaintext = await this.doDecryptWhisperMessage(preKeyProto.message, session)
             record.updateSessionState(session)
             await this.storage.storeSession(address, record.serialize())
+            // to add the user and device record when creating a session
+            this.storage.addDevice(this.remoteAddress.getName(),this.remoteAddress.getDeviceId())
             if (preKeyId !== undefined && preKeyId !== null) {
                 await this.storage.removePreKey(preKeyId)
             }

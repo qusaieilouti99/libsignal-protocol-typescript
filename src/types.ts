@@ -48,7 +48,7 @@ export enum Direction {
 export interface StorageType {
     getIdentityKeyPair: () => Promise<KeyPairType | undefined>
     getLocalRegistrationId: () => Promise<number | undefined>
-
+    addDevice: (userId: string, device: number)=> void
     isTrustedIdentity: (identifier: string, identityKey: ArrayBuffer, direction: Direction) => Promise<boolean>
     saveIdentity: (encodedAddress: string, publicKey: ArrayBuffer, nonblockingApproval?: boolean) => Promise<boolean>
 
