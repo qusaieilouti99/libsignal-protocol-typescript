@@ -60,8 +60,9 @@ export class SessionBuilder {
         } else {
             record = new SessionRecord()
         }
-
+        // close open sessions if any
         record.archiveCurrentState()
+        // cleanup the expired sessions and chains and set the new session as the open session
         record.updateSessionState(session)
         await Promise.all([
             this.storage.storeSession(address, record.serialize()),

@@ -406,10 +406,16 @@ export class SessionCipher {
         const previousRatchet = session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))]
         if (previousRatchet !== undefined) {
             await this.fillMessageKeys(previousRatchet, previousCounter).then(function () {
-                delete previousRatchet.chainKey.key
-                session.oldRatchetList[session.oldRatchetList.length] = {
-                    added: Date.now(),
-                    ephemeralKey: ratchet.lastRemoteEphemeralKey,
+                // in case there is some pending messages keep it for later
+                if(Object.keys(previousRatchet.messageKeys).length > 0){
+                    delete previousRatchet.chainKey.key
+                    session.oldRatchetList[session.oldRatchetList.length] = {
+                        added: Date.now(),
+                        ephemeralKey: ratchet.lastRemoteEphemeralKey,
+                    }
+                }else{
+                    // all the messages has been successfully decrypted, remove the chain.
+                    delete session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))] // previousRatchet
                 }
             })
         }

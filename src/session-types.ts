@@ -10,6 +10,30 @@ export enum BaseKeyType {
     THEIRS = 2,
 }
 
+export interface SenderKey<T = ArrayBuffer> {
+    signatureKey: T
+    chainKey:T
+    previousCounter:number
+}
+
+export interface LocalSenderKey<T = ArrayBuffer> {
+    signatureKeyPair: KeyPairType<T>
+    chainKey:T
+}
+
+export interface GroupSessionType<T = ArrayBuffer> {
+    currentRatchet: GroupRatchet<T>
+    oldRatchetList: GroupOldRatchetInfo<T>[]
+    chains: { [ephKeyString: string]: Chain<T> }
+}
+
+export interface GroupRatchet<T> {
+    signaturePublicKey: T
+    signatureKeyPair?:KeyPairType<T>
+    previousCounter: number
+    added?: number //timestamp
+}
+
 export interface SessionType<T = ArrayBuffer> {
     indexInfo: IndexInfo<T>
     registrationId?: number
@@ -37,6 +61,11 @@ export interface Ratchet<T> {
 }
 export interface OldRatchetInfo<T> {
     ephemeralKey: T
+    added: number //timestamp
+}
+
+export interface GroupOldRatchetInfo<T> {
+    signaturePublicKey: T
     added: number //timestamp
 }
 

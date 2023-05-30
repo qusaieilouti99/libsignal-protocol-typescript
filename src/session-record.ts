@@ -16,7 +16,7 @@ import {
 } from './session-types'
 
 const ARCHIVED_STATES_MAX_LENGTH = 40
-const OLD_RATCHETS_MAX_LENGTH = 10
+export const OLD_RATCHETS_MAX_LENGTH = 10
 const SESSION_RECORD_VERSION = 'v1'
 
 export class SessionRecord implements RecordType {
@@ -238,13 +238,22 @@ export class SessionRecord implements RecordType {
             if (!idx) {
                 throw new Error(`invalid index for chain`)
             }
-            delete session[idx]
-            session.oldRatchetList.splice(index, 1)
+
+            const oldestDate = new Date(oldest.added)
+            // this means the oldest chain has expired, so we remove it
+            // 30 days after the date it's added at => expired
+            if(Date.now() > oldestDate.setDate(oldestDate.getDate() + 30)){
+                delete session.chains[idx]
+                session.oldRatchetList.splice(index, 1)
+            }else{
+                // prevent infinite loop
+                break
+            }
         }
     }
 
     removeOldSessions(): void {
-        // Retain only the last 20 sessions
+        // Retain only the last 40 sessions
         const { sessions } = this
         let oldestBaseKey: string | null = null
         let oldestSession: SessionType | null = null
@@ -271,10 +280,10 @@ export class SessionRecord implements RecordType {
 }
 
 // Serialization helpers
-function toAB(s: string): ArrayBuffer {
+export function toAB(s: string): ArrayBuffer {
     return util.uint8ArrayToArrayBuffer(base64.toByteArray(s))
 }
-function abToS(b: ArrayBuffer): string {
+export function abToS(b: ArrayBuffer): string {
     return base64.fromByteArray(new Uint8Array(b))
 }
 

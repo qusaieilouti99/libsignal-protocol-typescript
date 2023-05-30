@@ -88,6 +88,17 @@ export class Crypto {
         return this._curve.createKeyPair(privKey)
     }
 
+    async generateAesKey(): Promise<ArrayBuffer> {
+        const key = await this._webcrypto.subtle.generateKey({
+                name: 'AES-CBC',
+                length: 256,
+            },
+            true,
+            ['encrypt', 'decrypt'])
+
+        return this._webcrypto.subtle.exportKey('raw', key);
+    }
+
     ECDHE(pubKey: ArrayBuffer, privKey: ArrayBuffer): Promise<ArrayBuffer> {
         return this._curve.ECDHE(pubKey, privKey)
     }
