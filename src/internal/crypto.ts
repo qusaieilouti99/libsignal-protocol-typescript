@@ -4,7 +4,7 @@ import { KeyPairType } from '../types'
 import { AsyncCurve as AsyncCurveType } from '@privacyresearch/curve25519-typescript'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const webcrypto = /*(globalThis === null || globalThis === void 0 ? void 0 : globalThis.crypto) ||*/ require('../../lib/msrcrypto'); // globalThis?.crypto || window?.crypto || require('../../lib/msrcrypto')
+const webcrypto = /*(globalThis === null || globalThis === void 0 ? void 0 : globalThis.crypto) ||*/ require('../../lib/msrcrypto') // globalThis?.crypto || window?.crypto || require('../../lib/msrcrypto')
 
 export class Crypto {
     private _curve: Internal.AsyncCurve
@@ -89,14 +89,16 @@ export class Crypto {
     }
 
     async generateAesKey(): Promise<ArrayBuffer> {
-        const key = await this._webcrypto.subtle.generateKey({
+        const key = await this._webcrypto.subtle.generateKey(
+            {
                 name: 'AES-CBC',
                 length: 256,
             },
             true,
-            ['encrypt', 'decrypt'])
+            ['encrypt', 'decrypt']
+        )
 
-        return this._webcrypto.subtle.exportKey('raw', key);
+        return this._webcrypto.subtle.exportKey('raw', key)
     }
 
     ECDHE(pubKey: ArrayBuffer, privKey: ArrayBuffer): Promise<ArrayBuffer> {

@@ -9,8 +9,8 @@ export * from './session-builder'
 export * from './session-cipher'
 export * from './session-types'
 export * from './curve'
-export * from './group-protocol/group-cipher'
-export * from './group-protocol/group-session-record'
+export * from './group-cipher'
+export * from './group-session-record'
 
 import * as Internal from './internal'
 

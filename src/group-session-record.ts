@@ -1,4 +1,4 @@
-import * as util from '../helpers'
+import * as util from './helpers'
 import {
     abToS,
     chainArrayBufferToString,
@@ -7,8 +7,8 @@ import {
     keyPairStirngToArrayBuffer,
     OLD_RATCHETS_MAX_LENGTH,
     toAB,
-} from '../session-record'
-import { Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType } from '../session-types'
+} from './session-record'
+import { Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType } from './session-types'
 
 export class GroupSessionRecord {
     static deserializeGroupSession(serialized: string): GroupSessionType {

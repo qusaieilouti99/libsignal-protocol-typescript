@@ -29,12 +29,11 @@
 //
 // }
 
-import * as util from '../helpers'
-import { uint8ArrayToArrayBuffer } from '../helpers'
-import { SessionLock } from '../session-lock'
-import { Chain, ChainType, GroupSessionType, LocalSenderKey, SenderKey } from '../session-types'
-import { SignalProtocolAddressType, StorageType } from '../types'
-import * as Internal from '../internal'
+import * as util from './helpers'
+import { SessionLock } from './session-lock'
+import { Chain, ChainType, GroupSessionType, LocalSenderKey, SenderKey } from './session-types'
+import { SignalProtocolAddressType, StorageType } from './types'
+import * as Internal from './internal'
 import * as base64 from 'base64-js'
 import { GroupWhisperMessage } from '@privacyresearch/libsignal-protocol-protobuf-ts'
 import { GroupSessionRecord } from './group-session-record'
@@ -79,12 +78,12 @@ export class GroupCipher {
         const address = this.address.toString()
 
         const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
-        const signaturePublicKey = uint8ArrayToArrayBuffer(message.signaturePublicKey)
+        const signaturePublicKey = util.uint8ArrayToArrayBuffer(message.signaturePublicKey)
 
         const validSignature = await Internal.crypto.Ed25519Verify(
             signaturePublicKey,
-            uint8ArrayToArrayBuffer(message.ciphertext),
-            uint8ArrayToArrayBuffer(message.signature)
+            util.uint8ArrayToArrayBuffer(message.ciphertext),
+            util.uint8ArrayToArrayBuffer(message.signature)
         )
         if (!validSignature) {
             throw new Error('Invalid signature')
@@ -120,7 +119,7 @@ export class GroupCipher {
 
         const plaintext = await Internal.crypto.decrypt(
             keys[0],
-            uint8ArrayToArrayBuffer(message.ciphertext),
+            util.uint8ArrayToArrayBuffer(message.ciphertext),
             keys[2].slice(0, 16)
         )
 
