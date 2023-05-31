@@ -250,7 +250,7 @@ export class SessionCipher {
             record.updateSessionState(session)
             await this.storage.storeSession(address, record.serialize())
             // to add the user and device record when creating a session
-            this.storage.addDevice(this.remoteAddress.getName(),this.remoteAddress.getDeviceId())
+            this.storage.addDevice(this.remoteAddress.getName(), this.remoteAddress.getDeviceId())
             if (preKeyId !== undefined && preKeyId !== null) {
                 await this.storage.removePreKey(preKeyId)
             }
@@ -407,13 +407,13 @@ export class SessionCipher {
         if (previousRatchet !== undefined) {
             await this.fillMessageKeys(previousRatchet, previousCounter).then(function () {
                 // in case there is some pending messages keep it for later
-                if(Object.keys(previousRatchet.messageKeys).length > 0){
+                if (Object.keys(previousRatchet.messageKeys).length > 0) {
                     delete previousRatchet.chainKey.key
                     session.oldRatchetList[session.oldRatchetList.length] = {
                         added: Date.now(),
                         ephemeralKey: ratchet.lastRemoteEphemeralKey,
                     }
-                }else{
+                } else {
                     // all the messages has been successfully decrypted, remove the chain.
                     delete session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))] // previousRatchet
                 }

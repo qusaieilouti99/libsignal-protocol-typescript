@@ -79,12 +79,12 @@ export class GroupCipher {
 
         const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
         console.log('message after decoding ', message)
-        const signaturePublicKey = util.uint8ArrayToArrayBuffer(message.signaturePublicKey)
-        console.log('signaturePublicKey after changing to array buffer ', signaturePublicKey)
+        // const signaturePublicKey = util.uint8ArrayToArrayBuffer(message.signaturePublicKey)
+        //  console.log('signaturePublicKey after changing to array buffer ', signaturePublicKey)
         const validSignature = await Internal.crypto.Ed25519Verify(
-            signaturePublicKey,
-            util.uint8ArrayToArrayBuffer(message.ciphertext),
-            util.uint8ArrayToArrayBuffer(message.signature)
+            message.signaturePublicKey,
+            message.ciphertext,
+            message.signature
         )
         if (!validSignature) {
             throw new Error('Invalid signature')
@@ -217,7 +217,7 @@ export class GroupCipher {
         )
         msg.ciphertext = new Uint8Array(ciphertext)
         msg.signature = new Uint8Array(signature)
-        console.log('message before encoding  ', msg.signaturePublicKey)
+        console.log('message before encoding  ', msg)
         const encodedMsg = GroupWhisperMessage.encode(msg).finish()
 
         GroupSessionRecord.removeOldChains(session)
