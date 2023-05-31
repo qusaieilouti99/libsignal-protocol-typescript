@@ -69,7 +69,7 @@ export class GroupCipher {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.decryptJob(buff, encoding))
     }
 
-    async decryptJob(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
+    private async decryptJob(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
             throw new Error(`unsupported encoding: ${encoding}`)
@@ -78,8 +78,9 @@ export class GroupCipher {
         const address = this.address.toString()
 
         const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
+        console.log('message after decoding ', message)
         const signaturePublicKey = util.uint8ArrayToArrayBuffer(message.signaturePublicKey)
-
+        console.log('signaturePublicKey after changing to array buffer ', signaturePublicKey)
         const validSignature = await Internal.crypto.Ed25519Verify(
             signaturePublicKey,
             util.uint8ArrayToArrayBuffer(message.ciphertext),
@@ -176,7 +177,7 @@ export class GroupCipher {
         await this.fillMessageKeys(chain, counter)
     }
 
-    async generateGroupSenderKey(): Promise<LocalSenderKey> {
+    private async generateGroupSenderKey(): Promise<LocalSenderKey> {
         // this will be used for signing the cipher messages
         const signatureKeyPair = await Internal.crypto.createKeyPair()
         // this will be used for deriving the messages keys
@@ -216,16 +217,19 @@ export class GroupCipher {
         )
         msg.ciphertext = new Uint8Array(ciphertext)
         msg.signature = new Uint8Array(signature)
+        console.log('message before encoding  ', msg.signaturePublicKey)
         const encodedMsg = GroupWhisperMessage.encode(msg).finish()
 
         GroupSessionRecord.removeOldChains(session)
         await this.storage.storeSession(address, GroupSessionRecord.serializeGroupSession(session))
 
         // the final cipher text
-        return util.uint8ArrayToString(encodedMsg)
+        const a = util.uint8ArrayToString(encodedMsg)
+        console.log('message after encoding  ', a)
+        return a
     }
 
-    createSenderSessionJob = async (): Promise<SenderKey> => {
+    private createSenderSessionJob = async (): Promise<SenderKey> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // create the session
@@ -254,7 +258,7 @@ export class GroupCipher {
         return { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: 0 }
     }
 
-    resetSenderSessionJob = async (): Promise<SenderKey> => {
+    private resetSenderSessionJob = async (): Promise<SenderKey> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // update the session
@@ -285,7 +289,7 @@ export class GroupCipher {
         return { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: ratchet.previousCounter }
     }
 
-    createOrUpdateReceiverSessionJob = async (senderKey: SenderKey): Promise<void> => {
+    private createOrUpdateReceiverSessionJob = async (senderKey: SenderKey): Promise<void> => {
         let existingSession = await this.getSession(this.address.toString())
 
         if (existingSession) {
@@ -343,7 +347,7 @@ export class GroupCipher {
         )
     }
 
-    async getSession(encodedNumber: string): Promise<GroupSessionType | undefined> {
+    private async getSession(encodedNumber: string): Promise<GroupSessionType | undefined> {
         const serialized = await this.storage.loadSession(encodedNumber)
         if (serialized === undefined) {
             return undefined
