@@ -84,14 +84,14 @@ export class GroupCipher {
             'ciphertext after changing to array buffer ',
             util.uint8ArrayToArrayBuffer(message.ciphertext).byteLength
         )
-        const validSignature = await Internal.crypto.Ed25519Verify(
+        /* const validSignature = await Internal.crypto.Ed25519Verify(
             util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
             util.uint8ArrayToArrayBuffer(message.ciphertext),
             util.uint8ArrayToArrayBuffer(message.signature)
         )
         if (!validSignature) {
             throw new Error('Invalid signature')
-        }
+        }*/
 
         const session = await this.getSession(address)
         if (!session) {
@@ -99,6 +99,8 @@ export class GroupCipher {
             e.name = 'NO_SESSION'
             throw e
         }
+
+        console.log('signaturePublicKeystring', base64.fromByteArray(message.signaturePublicKey))
 
         const chain = session.chains[base64.fromByteArray(message.signaturePublicKey)]
         if (!chain) {
@@ -215,6 +217,10 @@ export class GroupCipher {
 
         const ciphertext = await Internal.crypto.encrypt(keys[0], buffer, keys[2].slice(0, 16))
         console.log('ciphertext byte length ', ciphertext.byteLength)
+        console.log(
+            'signaturePublicKey string 111 ',
+            base64.fromByteArray(new Uint8Array(session!.currentRatchet!.signatureKeyPair!.pubKey))
+        )
         const signature = await Internal.crypto.Ed25519Sign(
             session.currentRatchet.signatureKeyPair!.privKey,
             ciphertext
