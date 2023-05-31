@@ -1,6 +1,14 @@
-import * as util from "../helpers";
-import {abToS, chainArrayBufferToString, chainStringToArrayBuffer, keyPairArrayBufferToString, keyPairStirngToArrayBuffer, OLD_RATCHETS_MAX_LENGTH, toAB} from "../session-record";
-import {Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType, SessionType} from "../session-types";
+import * as util from '../helpers'
+import {
+    abToS,
+    chainArrayBufferToString,
+    chainStringToArrayBuffer,
+    keyPairArrayBufferToString,
+    keyPairStirngToArrayBuffer,
+    OLD_RATCHETS_MAX_LENGTH,
+    toAB,
+} from '../session-record'
+import { Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType, SessionType } from '../session-types'
 
 export class GroupSessionRecord {
     static deserializeGroupSession(serialized: string): GroupSessionType {
@@ -8,7 +16,7 @@ export class GroupSessionRecord {
         return this.groupSessionTypeStringToArrayBuffer(json as GroupSessionType<string>)
     }
 
-    static serializeGroupSession(session:GroupSessionType): string {
+    static serializeGroupSession(session: GroupSessionType): string {
         const json = this.groupSessionTypeArrayBufferToString(session)
         return JSON.stringify(json)
     }
@@ -28,8 +36,8 @@ export class GroupSessionRecord {
 
     static groupRatchetArrayBufferToString(ratchet: GroupRatchet<ArrayBuffer>): GroupRatchet<string> {
         return {
-            signatureKeyPair:ratchet.signatureKeyPair && keyPairArrayBufferToString(ratchet.signatureKeyPair),
-            signaturePublicKey:abToS(ratchet.signaturePublicKey),
+            signatureKeyPair: ratchet.signatureKeyPair && keyPairArrayBufferToString(ratchet.signatureKeyPair),
+            signaturePublicKey: abToS(ratchet.signaturePublicKey),
             previousCounter: ratchet.previousCounter,
             added: ratchet.added,
         }
@@ -41,7 +49,6 @@ export class GroupSessionRecord {
             added: ori.added,
         }
     }
-
 
     static groupSessionTypeStringToArrayBuffer(json: GroupSessionType<string>): GroupSessionType<ArrayBuffer> {
         const { currentRatchet, oldRatchetList, chains } = json
@@ -58,8 +65,8 @@ export class GroupSessionRecord {
 
     static groupRatchetStringToArrayBuffer(ratchet: GroupRatchet<string>): GroupRatchet<ArrayBuffer> {
         return {
-            signaturePublicKey:toAB(ratchet.signaturePublicKey),
-            signatureKeyPair:ratchet.signatureKeyPair && keyPairStirngToArrayBuffer(ratchet.signatureKeyPair),
+            signaturePublicKey: toAB(ratchet.signaturePublicKey),
+            signatureKeyPair: ratchet.signatureKeyPair && keyPairStirngToArrayBuffer(ratchet.signatureKeyPair),
             previousCounter: ratchet.previousCounter,
             added: ratchet.added,
         }
@@ -67,7 +74,7 @@ export class GroupSessionRecord {
 
     static groupOldRatchetInfoStringToArrayBuffer(ori: GroupOldRatchetInfo<string>): GroupOldRatchetInfo<ArrayBuffer> {
         return {
-            signaturePublicKey:toAB(ori.signaturePublicKey),
+            signaturePublicKey: toAB(ori.signaturePublicKey),
             added: ori.added,
         }
     }
@@ -93,10 +100,10 @@ export class GroupSessionRecord {
             const oldestDate = new Date(oldest.added)
             // this means the oldest chain has expired, so we remove it
             // 30 days after the date it's added at => expired
-            if(Date.now() > oldestDate.setDate(oldestDate.getDate() + 30)){
+            if (Date.now() > oldestDate.setDate(oldestDate.getDate() + 30)) {
                 delete session.chains[idx]
                 session.oldRatchetList.splice(index, 1)
-            }else{
+            } else {
                 // prevent infinite loop
                 break
             }

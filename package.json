@@ -32,7 +32,7 @@
   },
   "dependencies": {
     "@privacyresearch/curve25519-typescript": "^0.0.12",
-    "@privacyresearch/libsignal-protocol-protobuf-ts": "^0.0.9",
+    "@privacyresearch/libsignal-protocol-protobuf-ts": "github:qusaieilouti99/libsignal-protocol-protobuf-ts",
     "base64-js": "^1.5.1"
   },
   "files": [
