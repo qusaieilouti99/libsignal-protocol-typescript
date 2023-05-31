@@ -79,12 +79,15 @@ export class GroupCipher {
 
         const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
         console.log('message after decoding ', message)
-        // const signaturePublicKey = util.uint8ArrayToArrayBuffer(message.signaturePublicKey)
-        //  console.log('signaturePublicKey after changing to array buffer ', signaturePublicKey)
+
+        console.log(
+            'ciphertext after changing to array buffer ',
+            util.uint8ArrayToArrayBuffer(message.ciphertext).byteLength
+        )
         const validSignature = await Internal.crypto.Ed25519Verify(
-            message.signaturePublicKey,
-            message.ciphertext,
-            message.signature
+            util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
+            util.uint8ArrayToArrayBuffer(message.ciphertext),
+            util.uint8ArrayToArrayBuffer(message.signature)
         )
         if (!validSignature) {
             throw new Error('Invalid signature')
@@ -211,6 +214,7 @@ export class GroupCipher {
         msg.previousCounter = session.currentRatchet.previousCounter
 
         const ciphertext = await Internal.crypto.encrypt(keys[0], buffer, keys[2].slice(0, 16))
+        console.log('ciphertext byte length ', ciphertext.byteLength)
         const signature = await Internal.crypto.Ed25519Sign(
             session.currentRatchet.signatureKeyPair!.privKey,
             ciphertext
