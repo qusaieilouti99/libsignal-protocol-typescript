@@ -84,14 +84,11 @@ export class GroupCipher {
             'ciphertext after changing to array buffer ',
             util.uint8ArrayToArrayBuffer(message.ciphertext).byteLength
         )
-        /* const validSignature = await Internal.crypto.Ed25519Verify(
+        await Internal.crypto.Ed25519Verify(
             util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
             util.uint8ArrayToArrayBuffer(message.ciphertext),
             util.uint8ArrayToArrayBuffer(message.signature)
         )
-        if (!validSignature) {
-            throw new Error('Invalid signature')
-        }*/
 
         const session = await this.getSession(address)
         if (!session) {
