@@ -78,12 +78,7 @@ export class GroupCipher {
         const address = this.address.toString()
 
         const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
-        console.log('message after decoding ', message)
 
-        console.log(
-            'ciphertext after changing to array buffer ',
-            util.uint8ArrayToArrayBuffer(message.ciphertext).byteLength
-        )
         await Internal.crypto.Ed25519Verify(
             util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
             util.uint8ArrayToArrayBuffer(message.ciphertext),
@@ -127,7 +122,9 @@ export class GroupCipher {
         )
 
         GroupSessionRecord.removeOldChains(session)
-        await this.storage.storeSession(address, GroupSessionRecord.serializeGroupSession(session))
+        const ser = GroupSessionRecord.serializeGroupSession(session)
+        console.log('session serialized ', ser)
+        await this.storage.storeSession(address, ser)
         return plaintext
     }
 
@@ -213,27 +210,22 @@ export class GroupCipher {
         msg.previousCounter = session.currentRatchet.previousCounter
 
         const ciphertext = await Internal.crypto.encrypt(keys[0], buffer, keys[2].slice(0, 16))
-        console.log('ciphertext byte length ', ciphertext.byteLength)
-        console.log(
-            'signaturePublicKey string 111 ',
-            base64.fromByteArray(new Uint8Array(session!.currentRatchet!.signatureKeyPair!.pubKey))
-        )
+
         const signature = await Internal.crypto.Ed25519Sign(
             session.currentRatchet.signatureKeyPair!.privKey,
             ciphertext
         )
         msg.ciphertext = new Uint8Array(ciphertext)
         msg.signature = new Uint8Array(signature)
-        console.log('message before encoding  ', msg)
+
         const encodedMsg = GroupWhisperMessage.encode(msg).finish()
 
         GroupSessionRecord.removeOldChains(session)
         await this.storage.storeSession(address, GroupSessionRecord.serializeGroupSession(session))
 
         // the final cipher text
-        const a = util.uint8ArrayToString(encodedMsg)
-        console.log('message after encoding  ', a)
-        return a
+
+        return util.uint8ArrayToString(encodedMsg)
     }
 
     private createSenderSessionJob = async (): Promise<SenderKey> => {
@@ -327,6 +319,16 @@ export class GroupCipher {
                     }
                 })
             }
+
+            existingSession.chains[base64.fromByteArray(new Uint8Array(senderKey.signatureKey))] = {
+                messageKeys: {},
+                chainKey: { counter: -1, key: senderKey.chainKey },
+                chainType: ChainType.RECEIVING,
+            }
+            existingSession.currentRatchet.signaturePublicKey = senderKey.signatureKey
+            // no need for this line
+            existingSession.currentRatchet.previousCounter = senderKey.previousCounter
+            // add the new chain
         } else {
             existingSession = {
                 currentRatchet: {
