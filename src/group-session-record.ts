@@ -28,7 +28,7 @@ export class GroupSessionRecord {
             newChains[k] = chainArrayBufferToString(chains[k])
         }
         return {
-            currentRatchet: this.groupRatchetArrayBufferToString(currentRatchet),
+            currentRatchet: currentRatchet && this.groupRatchetArrayBufferToString(currentRatchet),
             oldRatchetList: oldRatchetList.map(this.groupOldRatchetInfoArrayBufferToString),
             chains: newChains,
         }
@@ -57,7 +57,7 @@ export class GroupSessionRecord {
             newChains[k] = chainStringToArrayBuffer(chains[k])
         }
         return {
-            currentRatchet: this.groupRatchetStringToArrayBuffer(currentRatchet),
+            currentRatchet: currentRatchet && this.groupRatchetStringToArrayBuffer(currentRatchet),
             oldRatchetList: oldRatchetList.map(this.groupOldRatchetInfoStringToArrayBuffer),
             chains: newChains,
         }
