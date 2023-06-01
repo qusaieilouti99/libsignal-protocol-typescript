@@ -92,8 +92,6 @@ export class GroupCipher {
             throw e
         }
 
-        console.log('signaturePublicKeystring', base64.fromByteArray(message.signaturePublicKey))
-
         const chain = session.chains[base64.fromByteArray(message.signaturePublicKey)]
         if (!chain) {
             const e = new Error('no chain found for key ')
@@ -133,7 +131,7 @@ export class GroupCipher {
             throw new Error('No session to encrypt message for ' + address)
         }
 
-        if (!session.currentRatchet.signaturePublicKey) {
+        if (!session.currentRatchet?.signaturePublicKey) {
             throw new Error(`ratchet missing signaturePublicKey`)
         }
 
@@ -207,12 +205,12 @@ export class GroupCipher {
 
         delete chain.messageKeys[chain.chainKey.counter]
         msg.counter = chain.chainKey.counter
-        msg.previousCounter = session.currentRatchet.previousCounter
+        msg.previousCounter = session.currentRatchet!.previousCounter
 
         const ciphertext = await Internal.crypto.encrypt(keys[0], buffer, keys[2].slice(0, 16))
 
         const signature = await Internal.crypto.Ed25519Sign(
-            session.currentRatchet.signatureKeyPair!.privKey,
+            session.currentRatchet!.signatureKeyPair!.privKey,
             ciphertext
         )
         msg.ciphertext = new Uint8Array(ciphertext)
@@ -221,7 +219,9 @@ export class GroupCipher {
         const encodedMsg = GroupWhisperMessage.encode(msg).finish()
 
         GroupSessionRecord.removeOldChains(session)
-        await this.storage.storeSession(address, GroupSessionRecord.serializeGroupSession(session))
+        const ser = GroupSessionRecord.serializeGroupSession(session)
+        console.log('session serialized sender side  ', ser)
+        await this.storage.storeSession(address, ser)
 
         // the final cipher text
 
@@ -272,12 +272,13 @@ export class GroupCipher {
             chainKey: { counter: -1, key: chainKey },
             chainType: ChainType.SENDING,
         }
-        const ratchet = session.currentRatchet
+        const ratchet = session.currentRatchet!
 
-        const previousRatchetKey = base64.fromByteArray(new Uint8Array(ratchet.signaturePublicKey))
-        if (session.chains[previousRatchetKey] !== undefined) {
-            ratchet.previousCounter = session.chains[previousRatchetKey].chainKey.counter
-            delete session.chains[previousRatchetKey]
+        const previousRatchetKey = ratchet.signaturePublicKey
+        const previousRatchetKeyString = base64.fromByteArray(new Uint8Array(ratchet.signaturePublicKey))
+        if (session.chains[previousRatchetKeyString] !== undefined) {
+            ratchet.previousCounter = session.chains[previousRatchetKeyString].chainKey.counter
+            delete session.chains[previousRatchetKeyString]
         }
 
         ratchet.signaturePublicKey = signatureKeyPair.pubKey
@@ -285,9 +286,16 @@ export class GroupCipher {
 
         GroupSessionRecord.removeOldChains(session)
         await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
-        return { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: ratchet.previousCounter }
-    }
 
+        return {
+            signatureKey: signatureKeyPair.pubKey,
+            chainKey,
+            previousCounter: ratchet.previousCounter,
+            previousChainSignatureKey: previousRatchetKey,
+        }
+    }
+    // createSenderKey1 => sendMessage 7 times  => resetSenderKey2 => sendMessage 4 times =>  resetSenderKey3 => sendMessage 5 times
+    // createSenderKey1 => sendMessage 7 times  => resetSenderKey3 => sendMessage 5 times =>  resetSenderKey2 => sendMessage 4 times
     private createOrUpdateReceiverSessionJob = async (senderKey: SenderKey): Promise<void> => {
         let existingSession = await this.getSession(this.address.toString())
 
@@ -297,44 +305,41 @@ export class GroupCipher {
                 return Promise.resolve()
             }
 
-            const ratchet = existingSession.currentRatchet
-            if (!ratchet.signaturePublicKey) {
-                throw new Error(`attempting to step ratchet without signaturePublicKey`)
-            }
-
-            const previousRatchet =
-                existingSession.chains[base64.fromByteArray(new Uint8Array(ratchet.signaturePublicKey))]
-            if (previousRatchet !== undefined) {
-                await this.fillMessageKeys(previousRatchet, senderKey.previousCounter).then(function () {
-                    // in case there is some pending messages keep it for later
-                    if (Object.keys(previousRatchet.messageKeys).length > 0) {
-                        delete previousRatchet.chainKey.key
-                        existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
-                            added: Date.now(),
-                            signaturePublicKey: ratchet.signaturePublicKey,
+            // todo remove this code
+            if (senderKey.previousChainSignatureKey) {
+                const previousRatchet =
+                    existingSession.chains[base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey))]
+                if (previousRatchet !== undefined) {
+                    await this.fillMessageKeys(previousRatchet, senderKey.previousCounter).then(function () {
+                        // in case there is some pending messages keep it for later
+                        if (Object.keys(previousRatchet.messageKeys).length > 0) {
+                            delete previousRatchet.chainKey.key
+                            existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
+                                added: Date.now(),
+                                signaturePublicKey: senderKey.previousChainSignatureKey!,
+                            }
+                        } else {
+                            // all the messages has been successfully decrypted, remove the chain.
+                            delete existingSession!.chains[
+                                base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey!))
+                            ] // previousRatchet
                         }
-                    } else {
-                        // all the messages has been successfully decrypted, remove the chain.
-                        delete existingSession!.chains[base64.fromByteArray(new Uint8Array(ratchet.signaturePublicKey))] // previousRatchet
+                    })
+                } else {
+                    existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
+                        added: Date.now(),
+                        signaturePublicKey: senderKey.previousChainSignatureKey!,
                     }
-                })
+                }
             }
-
+            // add the new chain
             existingSession.chains[base64.fromByteArray(new Uint8Array(senderKey.signatureKey))] = {
                 messageKeys: {},
                 chainKey: { counter: -1, key: senderKey.chainKey },
                 chainType: ChainType.RECEIVING,
             }
-            existingSession.currentRatchet.signaturePublicKey = senderKey.signatureKey
-            // no need for this line
-            existingSession.currentRatchet.previousCounter = senderKey.previousCounter
-            // add the new chain
         } else {
             existingSession = {
-                currentRatchet: {
-                    signaturePublicKey: senderKey.signatureKey,
-                    previousCounter: 0,
-                },
                 oldRatchetList: [],
                 chains: {
                     [base64.fromByteArray(new Uint8Array(senderKey.signatureKey))]: {
