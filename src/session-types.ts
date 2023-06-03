@@ -29,6 +29,7 @@ export interface GroupSessionType<T = ArrayBuffer> {
 }
 
 export interface GroupRatchet<T> {
+    senderKeyVersion: number
     signaturePublicKey: T
     signatureKeyPair: KeyPairType<T>
     previousCounter: number

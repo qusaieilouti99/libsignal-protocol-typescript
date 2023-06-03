@@ -47,12 +47,12 @@ export class GroupCipher {
         this.storage = storage
     }
 
-    encrypt(buffer: ArrayBuffer): Promise<string> {
+    encrypt(buffer: ArrayBuffer): Promise<{ cipherText: string; senderKeyVersion: number }> {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.encryptJob(buffer))
     }
 
-    createSenderSession(): Promise<SenderKey> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.createSenderSessionJob())
+    createSenderSession(version: number): Promise<{ senderKey: SenderKey; session: string }> {
+        return SessionLock.queueJobForNumber(this.address.toString(), () => this.createSenderSessionJob(version))
     }
 
     createOrUpdateReceiverSession(senderKey: SenderKey): Promise<void> {
@@ -61,8 +61,8 @@ export class GroupCipher {
         )
     }
 
-    resetSenderSession(): Promise<SenderKey> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.resetSenderSessionJob())
+    resetSenderSession(version: number): Promise<{ senderKey: SenderKey; session: string }> {
+        return SessionLock.queueJobForNumber(this.address.toString(), () => this.resetSenderSessionJob(version))
     }
 
     decrypt(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
@@ -225,16 +225,20 @@ export class GroupCipher {
 
         // the final cipher text
 
-        return util.uint8ArrayToString(encodedMsg)
+        return {
+            cipherText: util.uint8ArrayToString(encodedMsg),
+            senderKeyVersion: session.currentRatchet!.senderKeyVersion,
+        }
     }
 
-    private createSenderSessionJob = async (): Promise<SenderKey> => {
+    private createSenderSessionJob = async (version: number): Promise<{ senderKey: SenderKey; session: string }> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // create the session
 
         const session: GroupSessionType = {
             currentRatchet: {
+                senderKeyVersion: version,
                 signaturePublicKey: signatureKeyPair.pubKey,
                 signatureKeyPair: signatureKeyPair,
                 previousCounter: 0,
@@ -253,11 +257,13 @@ export class GroupCipher {
         }
 
         GroupSessionRecord.removeOldChains(session)
-        await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
-        return { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: 0 }
+        return {
+            senderKey: { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: 0 },
+            session: GroupSessionRecord.serializeGroupSession(session),
+        }
     }
 
-    private resetSenderSessionJob = async (): Promise<SenderKey> => {
+    private resetSenderSessionJob = async (version: number): Promise<{ senderKey: SenderKey; session: string }> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // update the session
@@ -265,6 +271,10 @@ export class GroupCipher {
 
         if (!session) {
             throw new Error(`No session for address ${this.address.toString()}`)
+        }
+
+        if (session.currentRatchet!.senderKeyVersion >= version) {
+            throw new Error(`SenderKey with this version is already created ${this.address.toString()}`)
         }
 
         session.chains[base64.fromByteArray(new Uint8Array(signatureKeyPair.pubKey))] = {
@@ -283,15 +293,18 @@ export class GroupCipher {
 
         ratchet.signaturePublicKey = signatureKeyPair.pubKey
         ratchet.signatureKeyPair = signatureKeyPair
+        ratchet.senderKeyVersion = version
 
         GroupSessionRecord.removeOldChains(session)
-        await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
 
         return {
-            signatureKey: signatureKeyPair.pubKey,
-            chainKey,
-            previousCounter: ratchet.previousCounter,
-            previousChainSignatureKey: previousRatchetKey,
+            senderKey: {
+                signatureKey: signatureKeyPair.pubKey,
+                chainKey,
+                previousCounter: ratchet.previousCounter,
+                previousChainSignatureKey: previousRatchetKey,
+            },
+            session: GroupSessionRecord.serializeGroupSession(session),
         }
     }
     // createSenderKey1 => sendMessage 7 times  => resetSenderKey2 => sendMessage 4 times =>  resetSenderKey3 => sendMessage 5 times

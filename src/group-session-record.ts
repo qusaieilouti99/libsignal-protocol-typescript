@@ -36,6 +36,7 @@ export class GroupSessionRecord {
 
     static groupRatchetArrayBufferToString(ratchet: GroupRatchet<ArrayBuffer>): GroupRatchet<string> {
         return {
+            senderKeyVersion: ratchet.senderKeyVersion,
             signatureKeyPair: ratchet.signatureKeyPair && keyPairArrayBufferToString(ratchet.signatureKeyPair),
             signaturePublicKey: abToS(ratchet.signaturePublicKey),
             previousCounter: ratchet.previousCounter,
@@ -65,6 +66,7 @@ export class GroupSessionRecord {
 
     static groupRatchetStringToArrayBuffer(ratchet: GroupRatchet<string>): GroupRatchet<ArrayBuffer> {
         return {
+            senderKeyVersion: ratchet.senderKeyVersion,
             signaturePublicKey: toAB(ratchet.signaturePublicKey),
             signatureKeyPair: ratchet.signatureKeyPair && keyPairStirngToArrayBuffer(ratchet.signatureKeyPair),
             previousCounter: ratchet.previousCounter,
