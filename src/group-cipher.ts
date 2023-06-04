@@ -121,7 +121,6 @@ export class GroupCipher {
 
         GroupSessionRecord.removeOldChains(session)
         const ser = GroupSessionRecord.serializeGroupSession(session)
-        console.log('session serialized ', ser)
         await this.storage.storeSession(address, ser)
         return plaintext
     }
@@ -220,7 +219,6 @@ export class GroupCipher {
 
         GroupSessionRecord.removeOldChains(session)
         const ser = GroupSessionRecord.serializeGroupSession(session)
-        console.log('session serialized sender side  ', ser)
         await this.storage.storeSession(address, ser)
 
         // the final cipher text
