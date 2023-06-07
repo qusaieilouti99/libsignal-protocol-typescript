@@ -272,7 +272,7 @@ export class GroupCipher {
         }
 
         if (session.currentRatchet!.senderKeyVersion >= version) {
-            throw new Error(`SenderKey with this version is already created ${this.address.toString()}`)
+            throw new Error(`SENDER_KEY_ALREADY_CREATED`)
         }
 
         session.chains[base64.fromByteArray(new Uint8Array(signatureKeyPair.pubKey))] = {
