@@ -1,3 +1,4 @@
+import base64 from 'base64-js'
 import * as util from './helpers'
 import {
     abToS,
@@ -8,7 +9,7 @@ import {
     OLD_RATCHETS_MAX_LENGTH,
     toAB,
 } from './session-record'
-import { Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType } from './session-types'
+import { Chain, GroupOldRatchetInfo, GroupRatchet, GroupSessionType, SenderKey } from './session-types'
 
 export class GroupSessionRecord {
     static deserializeGroupSession(serialized: string): GroupSessionType {
@@ -78,6 +79,17 @@ export class GroupSessionRecord {
         return {
             signaturePublicKey: toAB(ori.signaturePublicKey),
             added: ori.added,
+        }
+    }
+
+    static serializeSenderKey(senderKey: SenderKey): SenderKey<string> {
+        return {
+            chainKey: base64.fromByteArray(new Uint8Array(senderKey.chainKey)),
+            signatureKey: base64.fromByteArray(new Uint8Array(senderKey.signatureKey)),
+            previousCounter: senderKey.previousCounter,
+            previousChainSignatureKey:
+                senderKey.previousChainSignatureKey &&
+                base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey)),
         }
     }
 

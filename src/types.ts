@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+import { SenderKey } from './session-types'
+
 export interface SignalProtocolAddressType {
     readonly name: string
     readonly deviceId: number
@@ -48,7 +50,12 @@ export enum Direction {
 export interface StorageType {
     getIdentityKeyPair: () => Promise<KeyPairType | undefined>
     getLocalRegistrationId: () => Promise<number | undefined>
-    addDevice: (userId: string, device: number)=> void
+    addDevice: (userId: string, device: number) => void
+    addPendingSenderKeyAtomically: (
+        address: string,
+        senderKeyVersion: number,
+        senderKey: SenderKey<string>
+    ) => Promise<void>
     isTrustedIdentity: (identifier: string, identityKey: ArrayBuffer, direction: Direction) => Promise<boolean>
     saveIdentity: (encodedAddress: string, publicKey: ArrayBuffer, nonblockingApproval?: boolean) => Promise<boolean>
 

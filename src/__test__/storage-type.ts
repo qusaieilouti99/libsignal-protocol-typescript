@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/explicit-module-boundary-types */
+import { SenderKey } from '../session-types'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { SignalProtocolAddress } from '../signal-protocol-address'
 import { StorageType, Direction, SessionRecordType, PreKeyPairType, SignedPreKeyPairType } from '../types'
@@ -97,9 +98,13 @@ export class SignalProtocolStore implements StorageType {
         )
     }
 
-    addDevice(userId: string, device: number): void {
+    addDevice(userId: string, device: number): void {}
 
-    }
+    async addPendingSenderKeyAtomically(
+        address: string,
+        senderKeyVersion: number,
+        senderKey: SenderKey<string>
+    ): Promise<void> {}
 
     async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
         let res = this.get('25519KeypreKey' + keyId, undefined)

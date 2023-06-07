@@ -51,7 +51,7 @@ export class GroupCipher {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.encryptJob(buffer))
     }
 
-    createSenderSession(version: number): Promise<{ senderKey: SenderKey; session: string }> {
+    createSenderSession(version: number): Promise<SenderKey<string>> {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.createSenderSessionJob(version))
     }
 
@@ -61,7 +61,7 @@ export class GroupCipher {
         )
     }
 
-    resetSenderSession(version: number): Promise<{ senderKey: SenderKey; session: string }> {
+    resetSenderSession(version: number): Promise<SenderKey<string>> {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.resetSenderSessionJob(version))
     }
 
@@ -229,7 +229,7 @@ export class GroupCipher {
         }
     }
 
-    private createSenderSessionJob = async (version: number): Promise<{ senderKey: SenderKey; session: string }> => {
+    private createSenderSessionJob = async (version: number): Promise<SenderKey<string>> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // create the session
@@ -255,13 +255,17 @@ export class GroupCipher {
         }
 
         GroupSessionRecord.removeOldChains(session)
-        return {
-            senderKey: { signatureKey: signatureKeyPair.pubKey, chainKey, previousCounter: 0 },
-            session: GroupSessionRecord.serializeGroupSession(session),
-        }
+        await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
+        const senderKey = GroupSessionRecord.serializeSenderKey({
+            signatureKey: signatureKeyPair.pubKey,
+            chainKey,
+            previousCounter: 0,
+        })
+        await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        return senderKey
     }
 
-    private resetSenderSessionJob = async (version: number): Promise<{ senderKey: SenderKey; session: string }> => {
+    private resetSenderSessionJob = async (version: number): Promise<SenderKey<string>> => {
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // update the session
@@ -294,16 +298,15 @@ export class GroupCipher {
         ratchet.senderKeyVersion = version
 
         GroupSessionRecord.removeOldChains(session)
-
-        return {
-            senderKey: {
-                signatureKey: signatureKeyPair.pubKey,
-                chainKey,
-                previousCounter: ratchet.previousCounter,
-                previousChainSignatureKey: previousRatchetKey,
-            },
-            session: GroupSessionRecord.serializeGroupSession(session),
-        }
+        await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
+        const senderKey = GroupSessionRecord.serializeSenderKey({
+            signatureKey: signatureKeyPair.pubKey,
+            chainKey,
+            previousCounter: ratchet.previousCounter,
+            previousChainSignatureKey: previousRatchetKey,
+        })
+        await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        return senderKey
     }
     // createSenderKey1 => sendMessage 7 times  => resetSenderKey2 => sendMessage 4 times =>  resetSenderKey3 => sendMessage 5 times
     // createSenderKey1 => sendMessage 7 times  => resetSenderKey3 => sendMessage 5 times =>  resetSenderKey2 => sendMessage 4 times
