@@ -3,6 +3,7 @@ import { Curve } from './curve'
 
 export * from './types'
 export * from './signal-protocol-address'
+export * from './signal-protocol-group-address'
 export * from './key-helper'
 export * from './fingerprint-generator'
 export * from './session-builder'
