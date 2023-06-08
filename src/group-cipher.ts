@@ -230,11 +230,17 @@ export class GroupCipher {
     }
 
     private createSenderSessionJob = async (version: number): Promise<SenderKey<string>> => {
+        let session = await this.getSession(this.address.toString())
+
+        if (session) {
+            throw new Error(`SENDER_KEY_ALREADY_CREATED`)
+        }
+
         // generate keys
         const { signatureKeyPair, chainKey } = await this.generateGroupSenderKey()
         // create the session
 
-        const session: GroupSessionType = {
+        session = {
             currentRatchet: {
                 senderKeyVersion: version,
                 signaturePublicKey: signatureKeyPair.pubKey,
