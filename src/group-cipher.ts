@@ -32,17 +32,17 @@
 import * as util from './helpers'
 import { SessionLock } from './session-lock'
 import { Chain, ChainType, GroupSessionType, LocalSenderKey, SenderKey } from './session-types'
-import { SignalProtocolAddressType, StorageType } from './types'
+import { SignalProtocolGroupAddressType, StorageType } from './types'
 import * as Internal from './internal'
 import * as base64 from 'base64-js'
 import { GroupWhisperMessage } from '@privacyresearch/libsignal-protocol-protobuf-ts'
 import { GroupSessionRecord } from './group-session-record'
 
 export class GroupCipher {
-    address: SignalProtocolAddressType
+    address: SignalProtocolGroupAddressType
     storage: StorageType
 
-    constructor(storage: StorageType, address: SignalProtocolAddressType) {
+    constructor(storage: StorageType, address: SignalProtocolGroupAddressType) {
         this.address = address
         this.storage = storage
     }

@@ -9,6 +9,14 @@ export interface SignalProtocolAddressType {
     equals: (other: SignalProtocolAddressType) => boolean
 }
 
+export interface SignalProtocolGroupAddressType {
+    readonly groupId: string
+    readonly userId: string
+    readonly deviceId: number
+    toString: () => string
+    equals: (other: SignalProtocolGroupAddressType) => boolean
+}
+
 export interface FingerprintGeneratorType {
     createFor: (
         localIdentifier: string,
