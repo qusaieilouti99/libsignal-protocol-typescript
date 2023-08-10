@@ -242,10 +242,10 @@ export class SessionRecord implements RecordType {
             const oldestDate = new Date(oldest.added)
             // this means the oldest chain has expired, so we remove it
             // 30 days after the date it's added at => expired
-            if(Date.now() > oldestDate.setDate(oldestDate.getDate() + 30)){
+            if (Date.now() > oldestDate.setDate(oldestDate.getDate() + 30)) {
                 delete session.chains[idx]
                 session.oldRatchetList.splice(index, 1)
-            }else{
+            } else {
                 // prevent infinite loop
                 break
             }
