@@ -61,10 +61,6 @@ export class SessionLock {
         return result as T // Return the result from the wrapped function
     }
 
-    static async clearQueue(id: string): Promise<void> {
-        if (this.queues[id]) {
-            await this.queues[id].onIdle()
-            delete this.queues[id]
-        }
-    }
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
+    static async clearQueue(): Promise<void> {}
 }
