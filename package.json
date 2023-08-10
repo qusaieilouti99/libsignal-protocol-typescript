@@ -33,8 +33,6 @@
   "dependencies": {
     "@privacyresearch/curve25519-typescript": "^0.0.12",
     "@privacyresearch/libsignal-protocol-protobuf-ts": "github:qusaieilouti99/libsignal-protocol-protobuf-ts",
-    "@types/async": "^3.2.20",
-    "async": "^3.2.4",
     "base64-js": "^1.5.1"
   },
   "files": [
