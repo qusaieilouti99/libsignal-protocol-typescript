@@ -42,6 +42,7 @@ export class SessionLock {
     private static queues: { [id: string]: QueueObject<any> } = {}
 
     static async queueJobForNumber<T>(id: string, runJob: JobType<T>): Promise<T> {
+        console.log('!this.queues[id]', !this.queues[id])
         if (!this.queues[id]) {
             this.queues[id] = queue<JobType<T>>(async (job, callback) => {
                 try {
@@ -49,7 +50,7 @@ export class SessionLock {
                     callback()
                     return result
                 } finally {
-                    console.log('finally')
+                    console.log('finally', id, this.queues[id].length())
                     if (this.queues[id].length() === 0) {
                         this.queues[id].kill()
                         delete this.queues[id]
@@ -60,7 +61,9 @@ export class SessionLock {
 
         const myQueue = this.queues[id]
 
-        return await myQueue.push<T>(runJob) // Return the result from the wrapped function
+        const a = await myQueue.push<T>(runJob)
+        console.log('idddddddddd', id, a)
+        return a // Return the result from the wrapped function
     }
 
     // eslint-disable-next-line @typescript-eslint/no-empty-function
