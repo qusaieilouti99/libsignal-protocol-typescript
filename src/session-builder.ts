@@ -271,27 +271,25 @@ export class SessionBuilder {
             this.storage.loadSignedPreKey(message.signedPreKeyId),
         ])
 
-        if (message.preKeyId && !preKeyPair) {
-            // console.log('Invalid prekey id', message.preKeyId)
-            throw new Error("Session created with a OTK and the key doesn't exist")
+        const session = record.getOpenSession()
+        if (signedPreKeyPair === undefined) {
+            // Session may or may not be the right one, but if its not, we
+            // can't do anything about it ...fall through and let
+            // decryptWhisperMessage handle that case
+            if (session !== undefined && session.currentRatchet !== undefined) {
+                throw new Error('Missing Signed PreKey w/session for PreKeyWhisperMessage')
+            } else {
+                throw new Error('Missing Signed PreKey for PreKeyWhisperMessage')
+            }
         }
 
         // session already created and the preKey is mostly deleted
         if (record.getSessionByBaseKey(message.baseKey)) {
             return message.preKeyId
         }
-
-        const session = record.getOpenSession()
-
-        if (signedPreKeyPair === undefined) {
-            // Session may or may not be the right one, but if its not, we
-            // can't do anything about it ...fall through and let
-            // decryptWhisperMessage handle that case
-            if (session !== undefined && session.currentRatchet !== undefined) {
-                return
-            } else {
-                throw new Error('Missing Signed PreKey for PreKeyWhisperMessage')
-            }
+        if (message.preKeyId && !preKeyPair) {
+            // console.log('Invalid prekey id', message.preKeyId)
+            throw new Error("Session created with a OTK and the key doesn't exist")
         }
 
         if (session !== undefined) {
