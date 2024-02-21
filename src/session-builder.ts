@@ -271,8 +271,14 @@ export class SessionBuilder {
             this.storage.loadSignedPreKey(message.signedPreKeyId),
         ])
 
+        if (message.preKeyId && !preKeyPair) {
+            // console.log('Invalid prekey id', message.preKeyId)
+            throw new Error("Session created with a OTK and the key doesn't exist")
+        }
+
+        // session already created and the preKey is mostly deleted
         if (record.getSessionByBaseKey(message.baseKey)) {
-            return
+            return message.preKeyId
         }
 
         const session = record.getOpenSession()
@@ -290,9 +296,6 @@ export class SessionBuilder {
 
         if (session !== undefined) {
             record.archiveCurrentState()
-        }
-        if (message.preKeyId && !preKeyPair) {
-            // console.log('Invalid prekey id', message.preKeyId)
         }
 
         const new_session = await this.startSessionWthPreKeyMessage(preKeyPair, signedPreKeyPair, message)
