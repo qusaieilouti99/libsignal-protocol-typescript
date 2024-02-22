@@ -272,20 +272,20 @@ export class SessionBuilder {
         ])
 
         const session = record.getOpenSession()
+        // session already created and the preKey is mostly deleted
+        if (record.getSessionByBaseKey(message.baseKey)) {
+            return message.preKeyId
+        }
+
         if (signedPreKeyPair === undefined) {
             // Session may or may not be the right one, but if its not, we
             // can't do anything about it ...fall through and let
             // decryptWhisperMessage handle that case
             if (session !== undefined && session.currentRatchet !== undefined) {
-                throw new Error('Missing Signed PreKey w/session for PreKeyWhisperMessage')
+                return
             } else {
                 throw new Error('Missing Signed PreKey for PreKeyWhisperMessage')
             }
-        }
-
-        // session already created and the preKey is mostly deleted
-        if (record.getSessionByBaseKey(message.baseKey)) {
-            return message.preKeyId
         }
         if (message.preKeyId && !preKeyPair) {
             // console.log('Invalid prekey id', message.preKeyId)
