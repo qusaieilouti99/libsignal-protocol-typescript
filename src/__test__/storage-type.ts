@@ -47,13 +47,13 @@ export class SignalProtocolStore implements StorageType {
 
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    storeDecryptedText(keyId: string, textMessage: ArrayBuffer): Promise<void> {
+    async storeDecryptedText(keyId: string, textMessage: ArrayBuffer): Promise<void> {
         this.put(keyId, textMessage)
     }
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    getDecryptedText(keyId: string): Promise<ArrayBuffer | undefined> {
-        this.get(keyId, undefined)
+    async getDecryptedText(keyId: string): Promise<ArrayBuffer | undefined> {
+        return this.get(keyId, undefined) as any
     }
     //
     get(key: string, defaultValue: StoreValue): StoreValue {
@@ -109,12 +109,14 @@ export class SignalProtocolStore implements StorageType {
         )
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-empty-function
     addDevice(userId: string, device: number): void {}
 
     async addPendingSenderKeyAtomically(
         address: string,
         senderKeyVersion: number,
         senderKey: SenderKey<string>
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
     ): Promise<void> {}
 
     async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
