@@ -90,6 +90,7 @@ export class GroupSessionRecord {
             previousChainSignatureKey:
                 senderKey.previousChainSignatureKey &&
                 base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey)),
+            senderKeyVersion: senderKey.senderKeyVersion,
         }
     }
 

@@ -44,6 +44,17 @@ export class SignalProtocolStore implements StorageType {
     constructor() {
         this._store = {}
     }
+
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    storeDecryptedText(keyId: string, textMessage: ArrayBuffer): Promise<void> {
+        this.put(keyId, textMessage)
+    }
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    getDecryptedText(keyId: string): Promise<ArrayBuffer | undefined> {
+        this.get(keyId, undefined)
+    }
     //
     get(key: string, defaultValue: StoreValue): StoreValue {
         if (key === null || key === undefined) throw new Error('Tried to get value for undefined/null key')

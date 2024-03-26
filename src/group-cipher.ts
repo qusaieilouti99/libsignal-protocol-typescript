@@ -65,11 +65,11 @@ export class GroupCipher {
         return SessionLock.queueJobForNumber(this.address.toString(), () => this.resetSenderSessionJob(version))
     }
 
-    decrypt(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.decryptJob(buff, encoding))
+    decrypt(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
+        return SessionLock.queueJobForNumber(this.address.toString(), () => this.decryptJob(buff, encoding, textId))
     }
 
-    private async decryptJob(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
+    private async decryptJob(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
             throw new Error(`unsupported encoding: ${encoding}`)
@@ -107,6 +107,11 @@ export class GroupCipher {
 
         const messageKey = chain.messageKeys[message.counter]
         if (messageKey === undefined) {
+            const alreadyDecryptedText = await this.storage.getDecryptedText(textId)
+            if (alreadyDecryptedText) {
+                return alreadyDecryptedText
+            }
+
             throw new Error('Message key not found. The counter was repeated or the key was not filled.')
         }
 
@@ -118,7 +123,7 @@ export class GroupCipher {
             util.uint8ArrayToArrayBuffer(message.ciphertext),
             keys[2].slice(0, 16)
         )
-
+        await this.storage.storeDecryptedText(textId, plaintext)
         GroupSessionRecord.removeOldChains(session)
         const ser = GroupSessionRecord.serializeGroupSession(session)
         await this.storage.storeSession(address, ser)
@@ -266,6 +271,7 @@ export class GroupCipher {
             signatureKey: signatureKeyPair.pubKey,
             chainKey,
             previousCounter: 0,
+            senderKeyVersion: version,
         })
         await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
         return senderKey
@@ -310,6 +316,7 @@ export class GroupCipher {
             chainKey,
             previousCounter: ratchet.previousCounter,
             previousChainSignatureKey: previousRatchetKey,
+            senderKeyVersion: version,
         })
         await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
         return senderKey

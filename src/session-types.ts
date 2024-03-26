@@ -15,6 +15,7 @@ export interface SenderKey<T = ArrayBuffer> {
     chainKey: T
     previousCounter: number
     previousChainSignatureKey?: T
+    senderKeyVersion: number
 }
 
 export interface LocalSenderKey<T = ArrayBuffer> {

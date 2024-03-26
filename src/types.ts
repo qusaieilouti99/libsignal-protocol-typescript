@@ -78,6 +78,8 @@ export interface StorageType {
     loadSignedPreKey: (keyId: number | string) => Promise<KeyPairType | undefined>
     storeSignedPreKey: (keyId: number | string, keyPair: KeyPairType) => Promise<void>
     removeSignedPreKey: (keyId: number | string) => Promise<void>
+    storeDecryptedText: (keyId: string, textMessage: ArrayBuffer) => Promise<void>
+    getDecryptedText: (keyId: number | string) => Promise<ArrayBuffer | undefined>
 }
 
 export interface CurveType {

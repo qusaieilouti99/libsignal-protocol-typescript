@@ -208,7 +208,11 @@ export class SessionCipher {
         ratchet.rootKey = masterKey[0]
     }
 
-    async decryptPreKeyWhisperMessage(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
+    async decryptPreKeyWhisperMessage(
+        buff: string | ArrayBuffer,
+        encoding?: string,
+        textId = ''
+    ): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
             throw new Error(`unsupported encoding: ${encoding}`)
@@ -246,7 +250,7 @@ export class SessionCipher {
                     }`
                 )
             }
-            const plaintext = await this.doDecryptWhisperMessage(preKeyProto.message, session)
+            const plaintext = await this.doDecryptWhisperMessage(preKeyProto.message, session, textId)
             record.updateSessionState(session)
             await this.storage.storeSession(address, record.serialize())
             // to add the user and device record when creating a session
@@ -263,7 +267,8 @@ export class SessionCipher {
         buffer: ArrayBuffer,
         sessionList: SessionType[],
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        errors: any[]
+        errors: any[],
+        textId = ''
     ): Promise<{ plaintext: ArrayBuffer; session: SessionType }> {
         // Iterate recursively through the list, attempting to decrypt
         // using each one at a time. Stop and return the result if we get
@@ -277,7 +282,7 @@ export class SessionCipher {
             return Promise.reject(errors[0])
         }
         try {
-            const plaintext = await this.doDecryptWhisperMessage(buffer, session)
+            const plaintext = await this.doDecryptWhisperMessage(buffer, session, textId)
 
             return { plaintext: plaintext, session: session }
         } catch (e) {
@@ -286,11 +291,11 @@ export class SessionCipher {
             }
 
             errors.push(e)
-            return this.decryptWithSessionList(buffer, sessionList, errors)
+            return this.decryptWithSessionList(buffer, sessionList, errors, textId)
         }
     }
 
-    decryptWhisperMessage(buff: string | ArrayBuffer, encoding?: string): Promise<ArrayBuffer> {
+    decryptWhisperMessage(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
             throw new Error(`unsupported encoding: ${encoding}`)
@@ -304,7 +309,7 @@ export class SessionCipher {
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const errors: any[] = []
-            const result = await this.decryptWithSessionList(buffer, record.getSessions(), errors)
+            const result = await this.decryptWithSessionList(buffer, record.getSessions(), errors, textId)
             if (result.session.indexInfo.baseKey !== record.getOpenSession()?.indexInfo.baseKey) {
                 record.archiveCurrentState()
                 record.promoteState(result.session)
@@ -328,7 +333,7 @@ export class SessionCipher {
         return SessionLock.queueJobForNumber(address, job)
     }
 
-    async doDecryptWhisperMessage(messageBytes: ArrayBuffer, session: SessionType): Promise<ArrayBuffer> {
+    async doDecryptWhisperMessage(messageBytes: ArrayBuffer, session: SessionType, textId = ''): Promise<ArrayBuffer> {
         const version = new Uint8Array(messageBytes)[0]
         if ((version & 0xf) > 3 || version >> 4 < 3) {
             // min version > 3 or max version < 3
@@ -363,6 +368,11 @@ export class SessionCipher {
 
         const messageKey = chain.messageKeys[message.counter]
         if (messageKey === undefined) {
+            const alreadyDecryptedText = await this.storage.getDecryptedText(textId)
+            if (alreadyDecryptedText) {
+                return alreadyDecryptedText
+            }
+
             const e = new Error('Message key not found. The counter was repeated or the key was not filled.')
             e.name = 'MessageCounterError'
             throw e
@@ -388,6 +398,8 @@ export class SessionCipher {
             uint8ArrayToArrayBuffer(message.ciphertext),
             keys[2].slice(0, 16)
         )
+
+        await this.storage.storeDecryptedText(textId, plaintext)
 
         delete session.pendingPreKey
         return plaintext
