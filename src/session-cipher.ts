@@ -1,4 +1,4 @@
-import { StorageType, Direction } from './types'
+import { StorageType, Direction, LoggerType } from './types'
 import { Chain, ChainType, SessionType } from './session-types'
 import { SignalProtocolAddress } from './signal-protocol-address'
 import { PreKeyWhisperMessage, WhisperMessage } from '@privacyresearch/libsignal-protocol-protobuf-ts'
@@ -16,14 +16,19 @@ export interface MessageType {
     body?: string
     registrationId?: number
 }
+
 export class SessionCipher {
     storage: StorageType
     remoteAddress: SignalProtocolAddress
-    constructor(storage: StorageType, remoteAddress: SignalProtocolAddress | string) {
+    logger: LoggerType
+
+    constructor(storage: StorageType, remoteAddress: SignalProtocolAddress | string, logger: LoggerType) {
         this.storage = storage
+        this.logger = logger
         this.remoteAddress =
             typeof remoteAddress === 'string' ? SignalProtocolAddress.fromString(remoteAddress) : remoteAddress
     }
+
     async getRecord(encodedNumber: string): Promise<SessionRecord | undefined> {
         const serialized = await this.storage.loadSession(encodedNumber)
         if (serialized === undefined) {
@@ -33,8 +38,9 @@ export class SessionCipher {
     }
 
     encrypt(buffer: ArrayBuffer): Promise<MessageType> {
-        return SessionLock.queueJobForNumber(this.remoteAddress.toString(), () => this.encryptJob(buffer))
+        return SessionLock.queueJob(this.remoteAddress.toString(), () => this.encryptJob(buffer))
     }
+
     private encryptJob = async (buffer: ArrayBuffer) => {
         if (!(buffer instanceof ArrayBuffer)) {
             throw new Error('Expected buffer to be an ArrayBuffer')
@@ -43,10 +49,20 @@ export class SessionCipher {
         const address = this.remoteAddress.toString()
         const msg = WhisperMessage.fromJSON({})
         const [ourIdentityKey, myRegistrationId, record] = await this.loadKeysAndRecord(address)
+
         if (!record) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'encryptJob',
+                error: `No record found to encrypt with`,
+            })
             throw new Error('No record for ' + address)
         }
+
         if (!ourIdentityKey) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'encryptJob',
+                error: `No identity key locally for me`,
+            })
             throw new Error(`cannot encrypt without identity key`)
         }
         // if (!myRegistrationId) {
@@ -60,6 +76,11 @@ export class SessionCipher {
             new ArrayBuffer(32),
             'WhisperMessageKeys'
         )
+
+        this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'encryptJob',
+            info: `generated key for counter ${chain.chainKey.counter}`,
+        })
 
         delete chain.messageKeys[chain.chainKey.counter]
         msg.counter = chain.chainKey.counter
@@ -87,13 +108,28 @@ export class SessionCipher {
             session.indexInfo.remoteIdentityKey,
             Direction.SENDING
         )
+
         if (!trusted) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'encryptJob',
+                error: `Identity key changed`,
+            })
             throw new Error('Identity key changed')
         }
 
         this.storage.saveIdentity(this.remoteAddress.toString(), session.indexInfo.remoteIdentityKey)
         record.updateSessionState(session)
         await this.storage.storeSession(address, record.serialize())
+
+        this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'encryptJob',
+            info: `successfully encrypted and generated mac and deleted key for counter ${chain.chainKey.counter}`,
+            msgCounter: chain.chainKey.counter,
+            msgPrevCounter: msg.previousCounter,
+            ourIdentityPub: base64.fromByteArray(new Uint8Array(ourIdentityKey.pubKey)),
+            remIdentityPub: base64.fromByteArray(new Uint8Array(session.indexInfo.remoteIdentityKey)),
+            hasPreKey: !!session.pendingPreKey,
+        })
 
         if (session.pendingPreKey !== undefined) {
             const preKeyMsg = PreKeyWhisperMessage.fromJSON({})
@@ -112,12 +148,22 @@ export class SessionCipher {
             preKeyMsg.message = encodedMsgWithMAC
             const encodedPreKeyMsg = PreKeyWhisperMessage.encode(preKeyMsg).finish()
             const result = String.fromCharCode((3 << 4) | 3) + util.uint8ArrayToString(encodedPreKeyMsg)
+
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'encryptJob',
+                info: `successfully encrypted and we will return pre key msg ${chain.chainKey.counter}`,
+                preKeyMsg: result,
+            })
             return {
                 type: 3,
                 body: result,
                 registrationId: session.registrationId,
             }
         } else {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'encryptJob',
+                info: `successfully encrypted and we will return normal msg ${chain.chainKey.counter}`,
+            })
             return {
                 type: 1,
                 body: util.uint8ArrayToString(encodedMsgWithMAC),
@@ -137,9 +183,18 @@ export class SessionCipher {
     private prepareChain = async (address: string, record: SessionRecord, msg: WhisperMessage) => {
         const session = record.getOpenSession()
         if (!session) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'prepareChain',
+                error: `No session to encrypt message`,
+            })
             throw new Error('No session to encrypt message for ' + address)
         }
+
         if (!session.currentRatchet.ephemeralKeyPair) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'prepareChain',
+                error: `ratchet missing ephemeralKeyPair`,
+            })
             throw new Error(`ratchet missing ephemeralKeyPair`)
         }
 
@@ -148,6 +203,10 @@ export class SessionCipher {
 
         const chain = session.chains[searchKey]
         if (chain?.chainType === ChainType.RECEIVING) {
+            this.logger.sendEvent(`1-1-encrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'prepareChain',
+                error: `Tried to encrypt on a receiving chain`,
+            })
             throw new Error('Tried to encrypt on a receiving chain')
         }
 
@@ -161,15 +220,27 @@ export class SessionCipher {
         }
 
         if (counter - chain.chainKey.counter > 2000) {
+            this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'fillMessageKeys',
+                error: `Over 2000 messages into the future! for counter:${counter} and chainCounter:${chain.chainKey.counter}`,
+            })
             throw new Error('Over 2000 messages into the future!')
         }
 
         if (chain.chainKey.key === undefined) {
+            this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'fillMessageKeys',
+                error: `Got invalid request to extend chain after it was already closed for counter:${counter}`,
+            })
             throw new Error('Got invalid request to extend chain after it was already closed')
         }
 
         const ckey = chain.chainKey.key
         if (!ckey) {
+            this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'fillMessageKeys',
+                error: `chain key is missing for counter:${counter}`,
+            })
             throw new Error(`chain key is missing`)
         }
 
@@ -183,6 +254,11 @@ export class SessionCipher {
         chain.messageKeys[chain.chainKey.counter + 1] = mac
         chain.chainKey.key = key
         chain.chainKey.counter += 1
+
+        this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'fillMessageKeys',
+            info: `Successfully created message key for counter: ${chain.chainKey.counter}`,
+        })
         await this.fillMessageKeys(chain, counter)
     }
 
@@ -190,6 +266,10 @@ export class SessionCipher {
         const ratchet = session.currentRatchet
 
         if (!ratchet.ephemeralKeyPair) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'calculateRatchet',
+                error: `currentRatchet has no ephemeral key. Cannot calculateRatchet.`,
+            })
             throw new Error(`currentRatchet has no ephemeral key. Cannot calculateRatchet.`)
         }
         const sharedSecret = await Internal.crypto.ECDHE(remoteKey, ratchet.ephemeralKeyPair.privKey)
@@ -206,6 +286,11 @@ export class SessionCipher {
             chainType: sending ? ChainType.SENDING : ChainType.RECEIVING,
         }
         ratchet.rootKey = masterKey[0]
+
+        this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'calculateRatchet',
+            info: `Creating a ${sending ? 'sending' : 'receiving'} ratchet`,
+        })
     }
 
     async decryptPreKeyWhisperMessage(
@@ -215,6 +300,10 @@ export class SessionCipher {
     ): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptPreKeyWhisperMessage',
+                error: `unsupported encoding: ${encoding}`,
+            })
             throw new Error(`unsupported encoding: ${encoding}`)
         }
 
@@ -225,6 +314,10 @@ export class SessionCipher {
 
         if ((version & 0xf) > 3 || version >> 4 < 3) {
             // min version > 3 or max version < 3
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptPreKeyWhisperMessage',
+                error: `Incompatible version number on PreKeyWhisperMessage`,
+            })
             throw new Error('Incompatible version number on PreKeyWhisperMessage')
         }
 
@@ -234,16 +327,28 @@ export class SessionCipher {
             const preKeyProto = PreKeyWhisperMessage.decode(messageData)
             if (!record) {
                 if (preKeyProto.registrationId === undefined) {
+                    this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                        functionName: 'decryptPreKeyWhisperMessage',
+                        error: `No registrationId`,
+                        signedPreKeyId: preKeyProto.signedPreKeyId,
+                        preKeyId: preKeyProto.preKeyId,
+                    })
                     throw new Error('No registrationId')
                 }
                 record = new SessionRecord() // (preKeyProto.registrationId)???
             }
-            const builder = new SessionBuilder(this.storage, this.remoteAddress)
+            const builder = new SessionBuilder(this.storage, this.remoteAddress, this.logger)
 
             // isTrustedIdentity is called within processV3, no need to call it here
             const preKeyId = await builder.processV3(record, preKeyProto)
             const session = record.getSessionByBaseKey(uint8ArrayToArrayBuffer(preKeyProto.baseKey))
             if (!session) {
+                this.logger.sendEvent(`1-1-create-receiver-session:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'decryptPreKeyWhisperMessage',
+                    error: `unable to find session for base key ${base64.fromByteArray(preKeyProto.baseKey)}, ${
+                        preKeyProto.baseKey.byteLength
+                    } and the preKeyId is ${preKeyId}`,
+                })
                 throw new Error(
                     `unable to find session for base key ${base64.fromByteArray(preKeyProto.baseKey)}, ${
                         preKeyProto.baseKey.byteLength
@@ -258,11 +363,19 @@ export class SessionCipher {
             if (preKeyId !== undefined && preKeyId !== null) {
                 await this.storage.removePreKey(preKeyId)
             }
+
+            this.logger.sendEvent(`1-1-create-receiver-session:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptPreKeyWhisperMessage',
+                info: `message decrypted successfully and the session stored and the device added and ${
+                    preKeyId ? `the preKey ${preKeyId} deleted` : ''
+                }}`,
+            })
             return plaintext
         }
 
-        return SessionLock.queueJobForNumber(address, job)
+        return SessionLock.queueJob(address, job)
     }
+
     async decryptWithSessionList(
         buffer: ArrayBuffer,
         sessionList: SessionType[],
@@ -274,42 +387,65 @@ export class SessionCipher {
         // using each one at a time. Stop and return the result if we get
         // a valid result
         if (sessionList.length === 0) {
-            return Promise.reject(errors[0])
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptWithSessionList',
+                error: `Empty session list`,
+            })
+            throw new Error('Empty session list')
         }
 
-        const session = sessionList.pop()
-        if (!session) {
-            return Promise.reject(errors[0])
-        }
-        try {
-            const plaintext = await this.doDecryptWhisperMessage(buffer, session, textId)
+        for (const session of sessionList) {
+            try {
+                const plaintext = await this.doDecryptWhisperMessage(buffer, session, textId)
 
-            return { plaintext: plaintext, session: session }
-        } catch (e) {
-            if ((e as Error).name === 'MessageCounterError') {
-                return Promise.reject(e)
+                return { plaintext: plaintext, session: session }
+            } catch (e: any) {
+                this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'decryptWithSessionList',
+                    error: `Failed to decrypt with this session and the error is ${e.toString()}`,
+                })
+                if ((e as Error).name === 'MessageCounterError') {
+                    throw e
+                }
+
+                errors.push(e)
             }
-
-            errors.push(e)
-            return this.decryptWithSessionList(buffer, sessionList, errors, textId)
         }
+
+        this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'decryptWithSessionList',
+            error: `Failed to decrypt with any session and the error is ${errors[0].toString()}`,
+        })
+
+        throw new Error(errors[0])
     }
 
     decryptWhisperMessage(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
         encoding = encoding || 'binary'
         if (encoding !== 'binary') {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptWhisperMessage',
+                error: `unsupported encoding: ${encoding}`,
+            })
             throw new Error(`unsupported encoding: ${encoding}`)
         }
+
         const buffer = typeof buff === 'string' ? util.binaryStringToArrayBuffer(buff) : buff
         const address = this.remoteAddress.toString()
         const job = async () => {
             const record = await this.getRecord(address)
             if (!record) {
+                this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'decryptWhisperMessage',
+                    error: `No record for device`,
+                })
                 throw new Error('No record for device ' + address)
             }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const errors: any[] = []
             const result = await this.decryptWithSessionList(buffer, record.getSessions(), errors, textId)
+
+            // if the correct session for decrypting this is closed, we make it open
             if (result.session.indexInfo.baseKey !== record.getOpenSession()?.indexInfo.baseKey) {
                 record.archiveCurrentState()
                 record.promoteState(result.session)
@@ -320,7 +456,12 @@ export class SessionCipher {
                 result.session.indexInfo.remoteIdentityKey,
                 Direction.RECEIVING
             )
+
             if (!trusted) {
+                this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'decryptWhisperMessage',
+                    error: `Identity key changed`,
+                })
                 throw new Error('Identity key changed')
             }
 
@@ -328,9 +469,15 @@ export class SessionCipher {
             record.updateSessionState(result.session)
             await this.storage.storeSession(address, record.serialize())
 
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'decryptWhisperMessage',
+                info: `Decrypt successfully and storing the session for ${textId}`,
+            })
+
             return result.plaintext
         }
-        return SessionLock.queueJobForNumber(address, job)
+
+        return SessionLock.queueJob(address, job)
     }
 
     async doDecryptWhisperMessage(messageBytes: ArrayBuffer, session: SessionType, textId = ''): Promise<ArrayBuffer> {
@@ -346,6 +493,10 @@ export class SessionCipher {
         const remoteEphemeralKey = uint8ArrayToArrayBuffer(message.ephemeralKey)
 
         if (session === undefined) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `No session found to decrypt message from, this is mostly because the signedPreKey was missing`,
+            })
             return Promise.reject(
                 new Error('No session found to decrypt message from ' + this.remoteAddress.toString())
             )
@@ -358,9 +509,18 @@ export class SessionCipher {
 
         const chain = session.chains[base64.fromByteArray(message.ephemeralKey)]
         if (!chain) {
-            console.warn(`no chain found for key`, { key: base64.fromByteArray(message.ephemeralKey), session })
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `no chain found for key ${base64.fromByteArray(message.ephemeralKey)}`,
+            })
+            throw new Error(`no chain found for key ${base64.fromByteArray(message.ephemeralKey)}`)
         }
+
         if (chain?.chainType === ChainType.SENDING) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `Tried to decrypt on a sending chain`,
+            })
             throw new Error('Tried to decrypt on a sending chain')
         }
 
@@ -370,18 +530,30 @@ export class SessionCipher {
         if (messageKey === undefined) {
             const alreadyDecryptedText = await this.storage.getDecryptedText(textId)
             if (alreadyDecryptedText) {
+                this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'doDecryptWhisperMessage',
+                    info: `Fallback to already decrypted and stored message for ${textId} and msgCounter ${message.counter}`,
+                })
                 return alreadyDecryptedText
             }
 
             const e = new Error('Message key not found. The counter was repeated or the key was not filled.')
             e.name = 'MessageCounterError'
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `'Message key not found. The counter was repeated or the key was not filled.`,
+            })
             throw e
         }
-        delete chain.messageKeys[message.counter]
+
         const keys = await Internal.HKDF(messageKey, new ArrayBuffer(32), 'WhisperMessageKeys')
 
         const ourIdentityKey = await this.storage.getIdentityKeyPair()
         if (!ourIdentityKey) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `Our identity key is missing. Cannot decrypt.`,
+            })
             throw new Error(`Our identity key is missing. Cannot decrypt.`)
         }
 
@@ -391,41 +563,88 @@ export class SessionCipher {
         macInput[33 * 2] = (3 << 4) | 3
         macInput.set(new Uint8Array(messageProto), 33 * 2 + 1)
 
-        await Internal.verifyMAC(macInput.buffer, keys[1], mac, 8)
+        this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'doDecryptWhisperMessage',
+            info: `Verifying mac for ${textId} and msgCounter ${message.counter}`,
+        })
 
-        const plaintext = await Internal.crypto.decrypt(
-            keys[0],
-            uint8ArrayToArrayBuffer(message.ciphertext),
-            keys[2].slice(0, 16)
-        )
+        try {
+            await Internal.verifyMAC(macInput.buffer, keys[1], mac, 8)
+        } catch (e: any) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `Verifying mac failed for ${textId} and msgCounter ${message.counter} and error ${e.toString()}`,
+            })
+            throw e
+        }
 
+        let plaintext: ArrayBuffer
+        try {
+            plaintext = await Internal.crypto.decrypt(
+                keys[0],
+                uint8ArrayToArrayBuffer(message.ciphertext),
+                keys[2].slice(0, 16)
+            )
+        } catch (e: any) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'doDecryptWhisperMessage',
+                error: `Decrypting failed for ${textId} and msgCounter ${message.counter} and error ${e.toString()}`,
+            })
+            throw e
+        }
+
+        // store the decrypted message, so if a failure happened before its being used, we can reuse it.
         await this.storage.storeDecryptedText(textId, plaintext)
 
+        // after successfully decrypting and storing the decrypted text, we remove the key that we used.
+        delete chain.messageKeys[message.counter]
+
+        // if there still be a pending key, remove it because the session is being used successfully
         delete session.pendingPreKey
+
+        this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'doDecryptWhisperMessage',
+            info: `Decrypting succeed for ${textId} and msgCounter ${message.counter}`,
+        })
+
         return plaintext
     }
 
     async maybeStepRatchet(session: SessionType, remoteKey: ArrayBuffer, previousCounter: number): Promise<void> {
         const remoteKeyString = base64.fromByteArray(new Uint8Array(remoteKey))
         if (session.chains[remoteKeyString] !== undefined) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'maybeStepRatchet',
+                info: `No need to step ratchet`,
+            })
             return Promise.resolve()
         }
 
         const ratchet = session.currentRatchet
         if (!ratchet.ephemeralKeyPair) {
+            this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                functionName: 'maybeStepRatchet',
+                error: `attempting to step reatchet without ephemeral key`,
+            })
             throw new Error(`attempting to step reatchet without ephemeral key`)
         }
-        const previousRatchet = session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))]
-        if (previousRatchet !== undefined) {
-            await this.fillMessageKeys(previousRatchet, previousCounter).then(function () {
+
+        const previousReceivingRatchet =
+            session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))]
+        if (previousReceivingRatchet !== undefined) {
+            await this.fillMessageKeys(previousReceivingRatchet, previousCounter).then(() => {
                 // in case there is some pending messages keep it for later
-                if (Object.keys(previousRatchet.messageKeys).length > 0) {
-                    delete previousRatchet.chainKey.key
+                if (Object.keys(previousReceivingRatchet.messageKeys).length > 0) {
+                    delete previousReceivingRatchet.chainKey.key
                     session.oldRatchetList[session.oldRatchetList.length] = {
                         added: Date.now(),
                         ephemeralKey: ratchet.lastRemoteEphemeralKey,
                     }
                 } else {
+                    this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                        functionName: 'maybeStepRatchet',
+                        info: `Deleting the previous chain because no more keys remaining`,
+                    })
                     // all the messages has been successfully decrypted, remove the chain.
                     delete session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))] // previousRatchet
                 }
@@ -433,21 +652,28 @@ export class SessionCipher {
         }
 
         await this.calculateRatchet(session, remoteKey, false)
-        const previousRatchetKey = base64.fromByteArray(new Uint8Array(ratchet.ephemeralKeyPair.pubKey))
-        if (session.chains[previousRatchetKey] !== undefined) {
-            ratchet.previousCounter = session.chains[previousRatchetKey].chainKey.counter
-            delete session.chains[previousRatchetKey]
+
+        // here we delete the chain for the previous sending ratchet, no need to keep
+        const previousSendingRatchetKey = base64.fromByteArray(new Uint8Array(ratchet.ephemeralKeyPair.pubKey))
+        if (session.chains[previousSendingRatchetKey] !== undefined) {
+            ratchet.previousCounter = session.chains[previousSendingRatchetKey].chainKey.counter
+            delete session.chains[previousSendingRatchetKey]
         }
-        const keyPair = await Internal.crypto.createKeyPair()
-        ratchet.ephemeralKeyPair = keyPair
+
+        ratchet.ephemeralKeyPair = await Internal.crypto.createKeyPair()
         await this.calculateRatchet(session, remoteKey, true)
         ratchet.lastRemoteEphemeralKey = remoteKey
+
+        this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+            functionName: 'maybeStepRatchet',
+            info: `Successfully stepped sending and receiving ratchet`,
+        })
     }
 
     /////////////////////////////////////////
     // session management and storage access
     getRemoteRegistrationId(): Promise<number | undefined> {
-        return SessionLock.queueJobForNumber(this.remoteAddress.toString(), async () => {
+        return SessionLock.queueJob(this.remoteAddress.toString(), async () => {
             const record = await this.getRecord(this.remoteAddress.toString())
             if (record === undefined) {
                 return undefined
@@ -468,7 +694,7 @@ export class SessionCipher {
             }
             return record.haveOpenSession()
         }
-        return SessionLock.queueJobForNumber(this.remoteAddress.toString(), job)
+        return SessionLock.queueJob(this.remoteAddress.toString(), job)
     }
     closeOpenSessionForDevice(): Promise<void> {
         const address = this.remoteAddress.toString()
@@ -482,7 +708,7 @@ export class SessionCipher {
             return this.storage.storeSession(address, record.serialize())
         }
 
-        return SessionLock.queueJobForNumber(address, job)
+        return SessionLock.queueJob(address, job)
     }
     deleteAllSessionsForDevice(): Promise<void> {
         // Used in session reset scenarios, where we really need to delete
@@ -496,30 +722,6 @@ export class SessionCipher {
             record.deleteAllSessions()
             return this.storage.storeSession(address, record.serialize())
         }
-        return SessionLock.queueJobForNumber(address, job)
+        return SessionLock.queueJob(address, job)
     }
 }
-
-/*
-
-  S
-
-  libsignal.SessionCipher = function(storage, remoteAddress) {
-      var cipher = new SessionCipher(storage, remoteAddress);
-
-      // returns a Promise that resolves to a ciphertext object
-      this.encrypt = cipher.encrypt.bind(cipher);
-
-      // returns a Promise that inits a session if necessary and resolves
-      // to a decrypted plaintext array buffer
-      this.decryptPreKeyWhisperMessage = cipher.decryptPreKeyWhisperMessage.bind(cipher);
-
-      // returns a Promise that resolves to decrypted plaintext array buffer
-      this.decryptWhisperMessage = cipher.decryptWhisperMessage.bind(cipher);
-
-      this.getRemoteRegistrationId = cipher.getRemoteRegistrationId.bind(cipher);
-      this.hasOpenSession = cipher.hasOpenSession.bind(cipher);
-      this.closeOpenSessionForDevice = cipher.closeOpenSessionForDevice.bind(cipher);
-      this.deleteAllSessionsForDevice = cipher.deleteAllSessionsForDevice.bind(cipher);
-  };
-  */

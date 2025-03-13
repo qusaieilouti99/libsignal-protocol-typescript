@@ -1,38 +1,7 @@
-/**/
-
-// create chainKey
-// generate a signatureKey keypair that will be used for signing the messages. (priv,pub)
-
-// send this to all the group members using the 1-1 pairwise channel { chainKey, signatureKey.publicKey }
-
-// to send a message you encrypt the message using the chainKey then sign the cipherText using the signatureKey.privateKey
-
-// we send {cipherText, signature}
-
-// for the next messages we do the same, but before we derive a new chainKey from the existing one.
-
-// RECEIVER
-// he receives the { chainKey, signatureKey.publicKey } senderKeyMessage
-// he stores this key.
-
-// when he receives a new message {cipherText, signature} from the sender he verifies the signature with the signatureKey.publicKey
-
-// if verifySig(signature,signatureKey.publicKey) === cipherText then valid
-
-// then he decrypts the message using chainKey and step the ratchet
-
-// senderKeys{groupId} => [{chainKey,publicKey,chains}]
-
-// session{groupId}{address} = {
-//
-//
-//
-// }
-
 import * as util from './helpers'
 import { SessionLock } from './session-lock'
 import { Chain, ChainType, GroupSessionType, LocalSenderKey, SenderKey } from './session-types'
-import { SignalProtocolGroupAddressType, StorageType } from './types'
+import { LoggerType, SignalProtocolGroupAddressType, StorageType } from './types'
 import * as Internal from './internal'
 import * as base64 from 'base64-js'
 import { GroupWhisperMessage } from '@privacyresearch/libsignal-protocol-protobuf-ts'
@@ -41,150 +10,32 @@ import { GroupSessionRecord } from './group-session-record'
 export class GroupCipher {
     address: SignalProtocolGroupAddressType
     storage: StorageType
+    logger: LoggerType
 
-    constructor(storage: StorageType, address: SignalProtocolGroupAddressType) {
+    constructor(storage: StorageType, address: SignalProtocolGroupAddressType, logger: LoggerType) {
         this.address = address
         this.storage = storage
+        this.logger = logger
     }
 
     encrypt(buffer: ArrayBuffer): Promise<{ cipherText: string; senderKeyVersion: number }> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.encryptJob(buffer))
+        return SessionLock.queueJob(this.address.toString(), () => this.encryptJob(buffer))
     }
 
     createSenderSession(version: number): Promise<SenderKey<string>> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.createSenderSessionJob(version))
+        return SessionLock.queueJob(this.address.toString(), () => this.createSenderSessionJob(version))
     }
 
     createOrUpdateReceiverSession(senderKey: SenderKey): Promise<void> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () =>
-            this.createOrUpdateReceiverSessionJob(senderKey)
-        )
+        return SessionLock.queueJob(this.address.toString(), () => this.createOrUpdateReceiverSessionJob(senderKey))
     }
 
     resetSenderSession(version: number): Promise<SenderKey<string>> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.resetSenderSessionJob(version))
+        return SessionLock.queueJob(this.address.toString(), () => this.resetSenderSessionJob(version))
     }
 
     decrypt(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
-        return SessionLock.queueJobForNumber(this.address.toString(), () => this.decryptJob(buff, encoding, textId))
-    }
-
-    private async decryptJob(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
-        encoding = encoding || 'binary'
-        if (encoding !== 'binary') {
-            throw new Error(`unsupported encoding: ${encoding}`)
-        }
-        const buffer = typeof buff === 'string' ? util.binaryStringToArrayBuffer(buff) : buff
-        const address = this.address.toString()
-
-        const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
-
-        await Internal.crypto.Ed25519Verify(
-            util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
-            util.uint8ArrayToArrayBuffer(message.ciphertext),
-            util.uint8ArrayToArrayBuffer(message.signature)
-        )
-
-        const session = await this.getSession(address)
-        if (!session) {
-            const e = new Error('No record for device ' + address)
-            e.name = 'NO_SESSION'
-            throw e
-        }
-
-        const chain = session.chains[base64.fromByteArray(message.signaturePublicKey)]
-        if (!chain) {
-            const e = new Error('no chain found for key ')
-            e.name = 'NO_CHAIN'
-            throw e
-        }
-
-        if (chain?.chainType === ChainType.SENDING) {
-            throw new Error('Tried to decrypt on a sending chain')
-        }
-
-        await this.fillMessageKeys(chain, message.counter)
-
-        const messageKey = chain.messageKeys[message.counter]
-        if (messageKey === undefined) {
-            const alreadyDecryptedText = await this.storage.getDecryptedText(textId)
-            if (alreadyDecryptedText) {
-                return alreadyDecryptedText
-            }
-
-            throw new Error('Message key not found. The counter was repeated or the key was not filled.')
-        }
-
-        delete chain.messageKeys[message.counter]
-        const keys = await Internal.HKDF(messageKey, new ArrayBuffer(32), 'WhisperMessageKeys')
-
-        const plaintext = await Internal.crypto.decrypt(
-            keys[0],
-            util.uint8ArrayToArrayBuffer(message.ciphertext),
-            keys[2].slice(0, 16)
-        )
-        await this.storage.storeDecryptedText(textId, plaintext)
-        GroupSessionRecord.removeOldChains(session)
-        const ser = GroupSessionRecord.serializeGroupSession(session)
-        await this.storage.storeSession(address, ser)
-        return plaintext
-    }
-
-    private prepareChain = async (address: string, session: GroupSessionType, msg: GroupWhisperMessage) => {
-        if (!session) {
-            throw new Error('No session to encrypt message for ' + address)
-        }
-
-        if (!session.currentRatchet?.signaturePublicKey) {
-            throw new Error(`ratchet missing signaturePublicKey`)
-        }
-
-        msg.signaturePublicKey = new Uint8Array(session.currentRatchet.signaturePublicKey)
-
-        const chain = session.chains[base64.fromByteArray(msg.signaturePublicKey)]
-
-        if (chain?.chainType === ChainType.RECEIVING) {
-            throw new Error('Tried to encrypt on a receiving chain')
-        }
-
-        await this.fillMessageKeys(chain, chain.chainKey.counter + 1)
-        return { chain }
-    }
-
-    private fillMessageKeys = async (chain: Chain<ArrayBuffer>, counter: number): Promise<void> => {
-        if (chain.chainKey.counter >= counter) {
-            return Promise.resolve() // Already calculated
-        }
-
-        if (chain.chainKey.key === undefined) {
-            throw new Error('Got invalid request to extend chain after it was already closed')
-        }
-
-        const ckey = chain.chainKey.key
-        if (!ckey) {
-            throw new Error(`chain key is missing`)
-        }
-
-        // Compute KDF_CK as described in X3DH specification
-        const byteArray = new Uint8Array(1)
-        byteArray[0] = 1
-        const mac = await Internal.crypto.sign(ckey, byteArray.buffer)
-        byteArray[0] = 2
-        const key = await Internal.crypto.sign(ckey, byteArray.buffer)
-
-        chain.messageKeys[chain.chainKey.counter + 1] = mac
-        chain.chainKey.key = key
-        chain.chainKey.counter += 1
-        await this.fillMessageKeys(chain, counter)
-    }
-
-    private async generateGroupSenderKey(): Promise<LocalSenderKey> {
-        // this will be used for signing the cipher messages
-        const signatureKeyPair = await Internal.crypto.createKeyPair()
-        // this will be used for deriving the messages keys
-        const chainKey = await Internal.crypto.generateAesKey()
-
-        return { signatureKeyPair, chainKey }
+        return SessionLock.queueJob(this.address.toString(), () => this.decryptJob(buff, encoding, textId))
     }
 
     private encryptJob = async (buffer: ArrayBuffer) => {
@@ -196,6 +47,10 @@ export class GroupCipher {
         const msg = GroupWhisperMessage.fromJSON({})
         const session = await this.getSession(address)
         if (!session) {
+            this.logger.sendEvent(`group-encrypt:address=${this.address.toString()}`, {
+                functionName: 'encryptJob',
+                error: 'no-session-to-encrypt',
+            })
             throw new Error('No session to encrypt message for ' + address)
         }
 
@@ -220,6 +75,15 @@ export class GroupCipher {
         msg.ciphertext = new Uint8Array(ciphertext)
         msg.signature = new Uint8Array(signature)
 
+        this.logger.sendEvent(`group-encrypt:address=${this.address.toString()}`, {
+            functionName: 'encryptJob',
+            info: 'group text encrypted successfully.',
+            senderKeyVersion: session.currentRatchet!.senderKeyVersion,
+            msgCounter: msg.counter,
+            previousCounter: msg.previousCounter,
+            signature: msg.signature,
+        })
+
         const encodedMsg = GroupWhisperMessage.encode(msg).finish()
 
         GroupSessionRecord.removeOldChains(session)
@@ -234,10 +98,185 @@ export class GroupCipher {
         }
     }
 
+    private async decryptJob(buff: string | ArrayBuffer, encoding?: string, textId = ''): Promise<ArrayBuffer> {
+        encoding = encoding || 'binary'
+        if (encoding !== 'binary') {
+            this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                functionName: 'decryptJob',
+                error: `unsupported encoding: ${encoding}`,
+            })
+            throw new Error(`unsupported encoding: ${encoding}`)
+        }
+        const buffer = typeof buff === 'string' ? util.binaryStringToArrayBuffer(buff) : buff
+        const address = this.address.toString()
+
+        const message = GroupWhisperMessage.decode(new Uint8Array(buffer))
+
+        await Internal.crypto.Ed25519Verify(
+            util.uint8ArrayToArrayBuffer(message.signaturePublicKey),
+            util.uint8ArrayToArrayBuffer(message.ciphertext),
+            util.uint8ArrayToArrayBuffer(message.signature)
+        )
+
+        const session = await this.getSession(address)
+        if (!session) {
+            this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                functionName: 'decryptJob',
+                error: `no session`,
+            })
+            const e = new Error('No record for device ' + address)
+            e.name = 'NO_SESSION'
+            throw e
+        }
+
+        const chain = session.chains[base64.fromByteArray(message.signaturePublicKey)]
+        if (!chain) {
+            this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                functionName: 'decryptJob',
+                error: `no chain for ${base64.fromByteArray(message.signaturePublicKey)}`,
+            })
+            const e = new Error('no chain found for key ')
+            e.name = 'NO_CHAIN'
+            throw e
+        }
+
+        if (chain?.chainType === ChainType.SENDING) {
+            this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                functionName: 'decryptJob',
+                error: `Tried to decrypt on a sending chain`,
+            })
+            throw new Error('Tried to decrypt on a sending chain')
+        }
+
+        await this.fillMessageKeys(chain, message.counter)
+
+        const messageKey = chain.messageKeys[message.counter]
+        if (messageKey === undefined) {
+            const alreadyDecryptedText = await this.storage.getDecryptedText(textId)
+            if (alreadyDecryptedText) {
+                this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                    functionName: 'decryptJob',
+                    info: `found already decrypted text saved locally for ${textId}`,
+                })
+                return alreadyDecryptedText
+            }
+
+            this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+                functionName: 'decryptJob',
+                error: `Message key not found. The counter was repeated or the key was not filled. for message counter ${message.counter}`,
+            })
+            throw new Error('Message key not found. The counter was repeated or the key was not filled.')
+        }
+
+        const keys = await Internal.HKDF(messageKey, new ArrayBuffer(32), 'WhisperMessageKeys')
+
+        const plaintext = await Internal.crypto.decrypt(
+            keys[0],
+            util.uint8ArrayToArrayBuffer(message.ciphertext),
+            keys[2].slice(0, 16)
+        )
+        await this.storage.storeDecryptedText(textId, plaintext)
+
+        this.logger.sendEvent(`group-decrypt:address=${this.address.toString()}`, {
+            functionName: 'decryptJob',
+            info: `successfully decrypted and saved locally for ${textId} and the key deleted`,
+            msgCounter: message.counter,
+        })
+        delete chain.messageKeys[message.counter]
+        GroupSessionRecord.removeOldChains(session)
+        const ser = GroupSessionRecord.serializeGroupSession(session)
+        await this.storage.storeSession(address, ser)
+        return plaintext
+    }
+
+    private prepareChain = async (address: string, session: GroupSessionType, msg: GroupWhisperMessage) => {
+        if (!session) {
+            throw new Error('No session to encrypt message for ' + address)
+        }
+
+        if (!session.currentRatchet?.signaturePublicKey) {
+            this.logger.sendEvent(`group-encrypt:address=${this.address.toString()}`, {
+                functionName: 'prepareChain',
+                error: 'ratchet missing signaturePublicKey',
+            })
+            throw new Error(`ratchet missing signaturePublicKey`)
+        }
+
+        msg.signaturePublicKey = new Uint8Array(session.currentRatchet.signaturePublicKey)
+
+        const chain = session.chains[base64.fromByteArray(msg.signaturePublicKey)]
+
+        if (chain?.chainType === ChainType.RECEIVING) {
+            this.logger.sendEvent(`group-encrypt:address=${this.address.toString()}`, {
+                functionName: 'prepareChain',
+                error: 'Tried to encrypt on a receiving chain',
+            })
+            throw new Error('Tried to encrypt on a receiving chain')
+        }
+
+        await this.fillMessageKeys(chain, chain.chainKey.counter + 1)
+        return { chain }
+    }
+
+    private fillMessageKeys = async (chain: Chain<ArrayBuffer>, counter: number): Promise<void> => {
+        if (chain.chainKey.counter >= counter) {
+            return Promise.resolve() // Already calculated
+        }
+
+        if (chain.chainKey.key === undefined) {
+            this.logger.sendEvent(`group-encrypt&decrypt:address=${this.address.toString()}`, {
+                functionName: 'fillMessageKeys',
+                error: 'Got invalid request to extend chain after it was already closed',
+            })
+            throw new Error('Got invalid request to extend chain after it was already closed')
+        }
+
+        const ckey = chain.chainKey.key
+        if (!ckey) {
+            this.logger.sendEvent(`group-encrypt&decrypt:address=${this.address.toString()}`, {
+                functionName: 'fillMessageKeys',
+                error: 'hain key is missing',
+            })
+            throw new Error(`chain key is missing`)
+        }
+
+        // Compute KDF_CK as described in X3DH specification
+        const byteArray = new Uint8Array(1)
+        byteArray[0] = 1
+        const mac = await Internal.crypto.sign(ckey, byteArray.buffer)
+        byteArray[0] = 2
+        const key = await Internal.crypto.sign(ckey, byteArray.buffer)
+
+        chain.messageKeys[chain.chainKey.counter + 1] = mac
+        chain.chainKey.key = key
+        chain.chainKey.counter += 1
+
+        this.logger.sendEvent(`group-encrypt&decrypt:address=${this.address.toString()}`, {
+            functionName: 'fillMessageKeys',
+            info: 'derived a new key successfully ',
+            chainKeyCounter: chain.chainKey.counter,
+        })
+
+        await this.fillMessageKeys(chain, counter)
+    }
+
+    private async generateGroupSenderKey(): Promise<LocalSenderKey> {
+        // this will be used for signing the cipher messages
+        const signatureKeyPair = await Internal.crypto.createKeyPair()
+        // this will be used for deriving the messages keys
+        const chainKey = await Internal.crypto.generateAesKey()
+
+        return { signatureKeyPair, chainKey }
+    }
+
     private createSenderSessionJob = async (version: number): Promise<SenderKey<string>> => {
         let session = await this.getSession(this.address.toString())
 
         if (session) {
+            this.logger.sendEvent(`group-create-session:address=${this.address.toString()}`, {
+                functionName: 'createSenderSessionJob',
+                error: `SENDER_KEY_ALREADY_CREATED`,
+            })
             throw new Error(`SENDER_KEY_ALREADY_CREATED`)
         }
 
@@ -266,6 +305,7 @@ export class GroupCipher {
         }
 
         GroupSessionRecord.removeOldChains(session)
+        // TODO check race cond
         await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
         const senderKey = GroupSessionRecord.serializeSenderKey({
             signatureKey: signatureKeyPair.pubKey,
@@ -273,7 +313,20 @@ export class GroupCipher {
             previousCounter: 0,
             senderKeyVersion: version,
         })
+
+        this.logger.sendEvent(`group-create-session:address=${this.address.toString()}`, {
+            functionName: 'createSenderSessionJob',
+            info: `successfully stored the session for sender key`,
+            senderKeyVersion: version,
+            signaturePubKey: senderKey.signatureKey,
+        })
         await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        this.logger.sendEvent(`group-create-session:address=${this.address.toString()}`, {
+            functionName: 'createSenderSessionJob',
+            info: `successfully added pending sender key`,
+            senderKeyVersion: version,
+            signaturePubKey: senderKey.signatureKey,
+        })
         return senderKey
     }
 
@@ -284,10 +337,18 @@ export class GroupCipher {
         const session = await this.getSession(this.address.toString())
 
         if (!session) {
+            this.logger.sendEvent(`group-reset-session:address=${this.address.toString()}`, {
+                functionName: 'resetSenderSessionJob',
+                error: `No session for address`,
+            })
             throw new Error(`No session for address ${this.address.toString()}`)
         }
 
         if (session.currentRatchet!.senderKeyVersion >= version) {
+            this.logger.sendEvent(`group-reset-session:address=${this.address.toString()}`, {
+                functionName: 'resetSenderSessionJob',
+                error: `SENDER_KEY_ALREADY_CREATED`,
+            })
             throw new Error(`SENDER_KEY_ALREADY_CREATED`)
         }
 
@@ -310,6 +371,7 @@ export class GroupCipher {
         ratchet.senderKeyVersion = version
 
         GroupSessionRecord.removeOldChains(session)
+        // TODO check race cond
         await this.storage.storeSession(this.address.toString(), GroupSessionRecord.serializeGroupSession(session))
         const senderKey = GroupSessionRecord.serializeSenderKey({
             signatureKey: signatureKeyPair.pubKey,
@@ -318,7 +380,20 @@ export class GroupCipher {
             previousChainSignatureKey: previousRatchetKey,
             senderKeyVersion: version,
         })
+
+        this.logger.sendEvent(`group-reset-session:address=${this.address.toString()}`, {
+            functionName: 'resetSenderSessionJob',
+            info: `successfully stored the session for sender key`,
+            senderKeyVersion: version,
+            signaturePubKey: senderKey.signatureKey,
+        })
         await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        this.logger.sendEvent(`group-reset-session:address=${this.address.toString()}`, {
+            functionName: 'resetSenderSessionJob',
+            info: `successfully added pending sender key`,
+            senderKeyVersion: version,
+            signaturePubKey: senderKey.signatureKey,
+        })
         return senderKey
     }
     // createSenderKey1 => sendMessage 7 times  => resetSenderKey2 => sendMessage 4 times =>  resetSenderKey3 => sendMessage 5 times
@@ -329,18 +404,24 @@ export class GroupCipher {
         if (existingSession) {
             if (existingSession?.chains[base64.fromByteArray(new Uint8Array(senderKey.signatureKey))]) {
                 // the chain is already exists
+                this.logger.sendEvent(`group-receiver-session:address=${this.address.toString()}`, {
+                    functionName: 'createOrUpdateReceiverSessionJob',
+                    info: `there is already existing session for this address`,
+                    senderKeyVersion: senderKey.senderKeyVersion,
+                    signaturePubKey: base64.fromByteArray(new Uint8Array(senderKey.signatureKey)),
+                })
                 return Promise.resolve()
             }
 
             // todo remove this code
             if (senderKey.previousChainSignatureKey) {
-                const previousRatchet =
+                const previousChain =
                     existingSession.chains[base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey))]
-                if (previousRatchet !== undefined) {
-                    await this.fillMessageKeys(previousRatchet, senderKey.previousCounter).then(function () {
+                if (previousChain !== undefined) {
+                    await this.fillMessageKeys(previousChain, senderKey.previousCounter).then(function () {
                         // in case there is some pending messages keep it for later
-                        if (Object.keys(previousRatchet.messageKeys).length > 0) {
-                            delete previousRatchet.chainKey.key
+                        if (Object.keys(previousChain.messageKeys).length > 0) {
+                            delete previousChain.chainKey.key
                             existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
                                 added: Date.now(),
                                 signaturePublicKey: senderKey.previousChainSignatureKey!,
@@ -349,7 +430,7 @@ export class GroupCipher {
                             // all the messages has been successfully decrypted, remove the chain.
                             delete existingSession!.chains[
                                 base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey!))
-                            ] // previousRatchet
+                            ] // previousChain
                         }
                     })
                 } else {
@@ -386,6 +467,13 @@ export class GroupCipher {
             this.address.toString(),
             GroupSessionRecord.serializeGroupSession(existingSession)
         )
+
+        this.logger.sendEvent(`group-receiver-session:address=${this.address.toString()}`, {
+            functionName: 'createOrUpdateReceiverSessionJob',
+            info: `successfully stored the receiver session for sender key`,
+            senderKeyVersion: senderKey.senderKeyVersion,
+            signaturePubKey: base64.fromByteArray(new Uint8Array(senderKey.signatureKey)),
+        })
     }
 
     private async getSession(encodedNumber: string): Promise<GroupSessionType | undefined> {

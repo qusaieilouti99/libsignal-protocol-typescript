@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/explicit-module-boundary-types */
 import { SenderKey } from './session-types'
 
 export interface SignalProtocolAddressType {
@@ -55,6 +53,7 @@ export enum Direction {
     SENDING = 1,
     RECEIVING = 2,
 }
+
 export interface StorageType {
     getIdentityKeyPair: () => Promise<KeyPairType | undefined>
     getLocalRegistrationId: () => Promise<number | undefined>
@@ -80,6 +79,10 @@ export interface StorageType {
     removeSignedPreKey: (keyId: number | string) => Promise<void>
     storeDecryptedText: (keyId: string, textMessage: ArrayBuffer) => Promise<void>
     getDecryptedText: (keyId: string) => Promise<ArrayBuffer | undefined>
+}
+
+export interface LoggerType {
+    sendEvent: (eventName: string, data?: Record<string, unknown>) => void
 }
 
 export interface CurveType {

@@ -1,8 +1,5 @@
 {
-
-  "roots": [
-    "<rootDir>/src"
-  ],
+  "roots": ["<rootDir>/src"],
   "transform": {
     "^.+\\.tsx?$": "ts-jest"
   },

@@ -1,11 +1,9 @@
-/* eslint-disable @typescript-eslint/no-non-null-assertion */
 import { SessionBuilder } from '../session-builder'
 import { SessionCipher } from '../session-cipher'
 import { SessionRecord } from '../session-record'
-
 import { SignalProtocolAddress } from '../signal-protocol-address'
+import { FakeLogger } from './fake-logger'
 import { SignalProtocolStore } from './storage-type'
-
 import { generateIdentity, generatePreKeyBundle, assertEqualArrayBuffers } from '../__test-utils__/utils'
 import * as utils from '../helpers'
 import { KeyHelper } from '../key-helper'
@@ -20,22 +18,21 @@ describe('basic prekey v3', function () {
     const bobStore = new SignalProtocolStore()
     const bobPreKeyId = 1337
     const bobSignedKeyId = 1
+    const fakeLogger = new FakeLogger()
 
     beforeAll(async () => {
         await Promise.all([generateIdentity(aliceStore), generateIdentity(bobStore)])
         const preKeyBundle = await generatePreKeyBundle(bobStore, bobPreKeyId, bobSignedKeyId)
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         return builder.processPreKey(preKeyBundle)
     })
 
-    const originalMessage = <ArrayBuffer>utils.binaryStringToArrayBuffer("L'homme est condamné à être libre")
-    const nextMessage = <ArrayBuffer>(
-        utils.binaryStringToArrayBuffer(
-            "condamné parce qu'il ne s'est pas crée lui-même, et par ailleurs cependant libre parce qu'une fois jeté dans le monde, il est responsable de tout ce qu'il fait."
-        )
+    const originalMessage = utils.binaryStringToArrayBuffer("L'homme est condamné à être libre")
+    const nextMessage = utils.binaryStringToArrayBuffer(
+        "condamné parce qu'il ne s'est pas crée lui-même, et par ailleurs cependant libre parce qu'une fois jeté dans le monde, il est responsable de tout ce qu'il fait."
     )
-    const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS)
-    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS)
+    const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS, fakeLogger)
+    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS, fakeLogger)
 
     test('basic prekey v3: creates a session', async () => {
         const record = await aliceStore.loadSession(BOB_ADDRESS.toString())
@@ -71,7 +68,7 @@ describe('basic prekey v3', function () {
 
     test('basic prekey v3: accepts a new preKey with the same identity', async () => {
         const preKeyBundle = await generatePreKeyBundle(bobStore, bobPreKeyId + 1, bobSignedKeyId + 1)
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         await builder.processPreKey(preKeyBundle)
         const record = await aliceStore.loadSession(BOB_ADDRESS.toString())
         expect(record).toBeDefined()
@@ -82,7 +79,7 @@ describe('basic prekey v3', function () {
 
     test('basic prekey v3: rejects untrusted identity keys', async () => {
         const newIdentity = await KeyHelper.generateIdentityKeyPair()
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         await expect(async () => {
             await builder.processPreKey({
                 identityKey: newIdentity.pubKey,
@@ -99,7 +96,7 @@ describe('basic prekey v3', function () {
 
 describe('basic v3 NO PREKEY', function () {
     const aliceStore = new SignalProtocolStore()
-
+    const fakeLogger = new FakeLogger()
     const bobStore = new SignalProtocolStore()
     const bobPreKeyId = 1337
     const bobSignedKeyId = 1
@@ -108,7 +105,7 @@ describe('basic v3 NO PREKEY', function () {
         await Promise.all([generateIdentity(aliceStore), generateIdentity(bobStore)])
         const preKeyBundle = await generatePreKeyBundle(bobStore, bobPreKeyId, bobSignedKeyId)
         delete preKeyBundle.preKey
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         return builder.processPreKey(preKeyBundle)
     })
 
@@ -118,8 +115,8 @@ describe('basic v3 NO PREKEY', function () {
             "condamné parce qu'il ne s'est pas crée lui-même, et par ailleurs cependant libre parce qu'une fois jeté dans le monde, il est responsable de tout ce qu'il fait."
         )
     )
-    const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS)
-    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS)
+    const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS, fakeLogger)
+    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS, fakeLogger)
 
     test('basic v3 NO PREKEY: creates a session', async () => {
         const record = await aliceStore.loadSession(BOB_ADDRESS.toString())
@@ -158,7 +155,7 @@ describe('basic v3 NO PREKEY', function () {
     test('basic v3 NO PREKEY: accepts a new preKey with the same identity', async () => {
         const preKeyBundle = await generatePreKeyBundle(bobStore, bobPreKeyId + 1, bobSignedKeyId + 1)
         delete preKeyBundle.preKey
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         await builder.processPreKey(preKeyBundle)
         const record = await aliceStore.loadSession(BOB_ADDRESS.toString())
         expect(record).toBeDefined()
@@ -169,7 +166,7 @@ describe('basic v3 NO PREKEY', function () {
 
     test('basic v3 NO PREKEY: rejects untrusted identity keys', async () => {
         const newIdentity = await KeyHelper.generateIdentityKeyPair() //.then(function (newIdentity) {
-        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+        const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
         await expect(async () => {
             await builder.processPreKey({
                 identityKey: newIdentity.pubKey,

@@ -3,7 +3,7 @@
 import { SessionCipher, MessageType } from '../session-cipher'
 import { SessionBuilder } from '../session-builder'
 import { generateIdentity, generatePreKeyBundle, assertEqualUint8Arrays } from '../__test-utils__/utils'
-
+import { FakeLogger } from './fake-logger'
 import { SignalProtocolStore } from './storage-type'
 import { SignalProtocolAddress } from '../signal-protocol-address'
 import { SessionRecord } from '../session-record'
@@ -25,7 +25,7 @@ const tv = TestVectors()
 const store = new SignalProtocolStore()
 const registrationId = 1337
 const address = new SignalProtocolAddress('foo', 1)
-const sessionCipher = new SessionCipher(store, address.toString())
+const sessionCipher = new SessionCipher(store, address.toString(), new FakeLogger())
 
 const record = new SessionRecord(registrationId)
 const session = {
@@ -55,7 +55,7 @@ test('getRemoteRegistrationId, when an open record exists, returns a valid regis
 
 test('getRemoteRegistrationId, when a record does not exist, returns undefined', async () => {
     await prep
-    const sessionCipher = new SessionCipher(store, 'bar.1')
+    const sessionCipher = new SessionCipher(store, 'bar.1', new FakeLogger())
     const value = await sessionCipher.getRemoteRegistrationId()
     expect(value).toBeUndefined()
 })
@@ -69,7 +69,7 @@ test('hasOpenSession returns true', async () => {
 it('hasOpenSession: no open session exists returns false', async () => {
     await prep
     const address = new SignalProtocolAddress('bar', 1)
-    const sessionCipher = new SessionCipher(store, address.toString())
+    const sessionCipher = new SessionCipher(store, address.toString(), new FakeLogger())
     const record = new SessionRecord()
     await store.storeSession(address.toString(), record.serialize())
     const value = await sessionCipher.hasOpenSession()
@@ -79,7 +79,7 @@ it('hasOpenSession: no open session exists returns false', async () => {
 test('hasOpenSession: when there is no session returns false', async () => {
     await prep
     const address = new SignalProtocolAddress('baz', 1)
-    const sessionCipher = new SessionCipher(store, address.toString())
+    const sessionCipher = new SessionCipher(store, address.toString(), new FakeLogger())
     const value = await sessionCipher.hasOpenSession()
     expect(value).toBeFalsy()
 })
@@ -146,7 +146,7 @@ async function doReceiveStep(
     address: SignalProtocolAddress
 ): Promise<boolean> {
     await setupReceiveStep(store, data, privKeyQueue)
-    const sessionCipher = new SessionCipher(store, address)
+    const sessionCipher = new SessionCipher(store, address, new FakeLogger())
 
     try {
         let plaintext: Uint8Array
@@ -221,7 +221,7 @@ async function doSendStep(
                 signedPreKey: data.getKeys.devices[0].signedPreKey,
                 registrationId: data.getKeys.devices[0].registrationId,
             }
-            const builder = new SessionBuilder(store, address)
+            const builder = new SessionBuilder(store, address, new FakeLogger())
             await builder.processPreKey(deviceObject)
         }
 
@@ -232,7 +232,7 @@ async function doSendStep(
             proto.body = data.smsText
         }
 
-        const sessionCipher = new SessionCipher(store, address)
+        const sessionCipher = new SessionCipher(store, address, new FakeLogger())
         const pt = PushMessageContent.encode(proto).finish()
 
         if (data.endSession) {
@@ -383,14 +383,12 @@ describe('key changes', function () {
     const ALICE_ADDRESS = new SignalProtocolAddress('+14151111111', 1)
     const BOB_ADDRESS = new SignalProtocolAddress('+14152222222', 1)
     const originalMessage = <ArrayBuffer>utils.binaryStringToArrayBuffer("L'homme est condamné à être libre")
-
+    const fakeLogger = new FakeLogger()
     const aliceStore = new SignalProtocolStore()
-
     const bobStore = new SignalProtocolStore()
     const bobPreKeyId = 1337
     const bobSignedKeyId = 1
-
-    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS)
+    const bobSessionCipher = new SessionCipher(bobStore, ALICE_ADDRESS, fakeLogger)
 
     beforeAll(function (done) {
         Promise.all([aliceStore, bobStore].map(generateIdentity))
@@ -398,11 +396,11 @@ describe('key changes', function () {
                 return generatePreKeyBundle(bobStore, bobPreKeyId, bobSignedKeyId)
             })
             .then((preKeyBundle) => {
-                const builder = new SessionBuilder(aliceStore, BOB_ADDRESS)
+                const builder = new SessionBuilder(aliceStore, BOB_ADDRESS, fakeLogger)
                 return builder
                     .processPreKey(preKeyBundle)
                     .then(function () {
-                        const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS)
+                        const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS, fakeLogger)
                         return aliceSessionCipher.encrypt(originalMessage)
                     })
                     .then(function (ciphertext) {
@@ -417,6 +415,7 @@ describe('key changes', function () {
 
     describe("When bob's identity changes", function () {
         let messageFromBob: MessageType
+        const fakeLogger = new FakeLogger()
         beforeAll(async () => {
             const ciphertext = await bobSessionCipher.encrypt(originalMessage)
             messageFromBob = ciphertext
@@ -427,14 +426,14 @@ describe('key changes', function () {
         })
 
         test('alice cannot encrypt with the old session', async () => {
-            const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS)
+            const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS, fakeLogger)
             await expect(async () => {
                 await aliceSessionCipher.encrypt(originalMessage)
             }).rejects.toThrow('Identity key changed')
         })
 
         test('alice cannot decrypt from the old session', async () => {
-            const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS)
+            const aliceSessionCipher = new SessionCipher(aliceStore, BOB_ADDRESS, fakeLogger)
             await expect(async () => {
                 await aliceSessionCipher.decryptWhisperMessage(<string>messageFromBob.body, 'binary')
             }).rejects.toThrow('Identity key changed')

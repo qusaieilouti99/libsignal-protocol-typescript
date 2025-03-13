@@ -9,7 +9,7 @@
   "scripts": {
     "test": "jest --config jestconfig.json",
     "lint": "eslint -c .eslintrc.js  '**/*.ts'",
-    "format": "prettier '**/{*.{js?(on),ts?(x),md},.*.js?(on)}' --write --list-different --config prettier.config.js",
+    "format": "prettier \"**/*.{js,json,ts,tsx,md}\" \"**/.*.{js,json}\" --write --list-different --config prettier.config.js\n",
     "prepare": "yarn run build",
     "build": "tsc -d",
     "prepublishOnly": "yarn run lint",
