@@ -624,7 +624,7 @@ export class SessionCipher {
         if (!ratchet.ephemeralKeyPair) {
             this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
                 functionName: 'maybeStepRatchet',
-                error: `attempting to step reatchet without ephemeral key`,
+                error: `attempting to step ratchet without ephemeral key`,
             })
             throw new Error(`attempting to step reatchet without ephemeral key`)
         }
@@ -633,21 +633,15 @@ export class SessionCipher {
             session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))]
         if (previousReceivingRatchet !== undefined) {
             await this.fillMessageKeys(previousReceivingRatchet, previousCounter).then(() => {
-                // in case there is some pending messages keep it for later
-                if (Object.keys(previousReceivingRatchet.messageKeys).length > 0) {
-                    delete previousReceivingRatchet.chainKey.key
-                    session.oldRatchetList[session.oldRatchetList.length] = {
-                        added: Date.now(),
-                        ephemeralKey: ratchet.lastRemoteEphemeralKey,
-                    }
-                } else {
-                    this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
-                        functionName: 'maybeStepRatchet',
-                        info: `Deleting the previous chain because no more keys remaining`,
-                    })
-                    // all the messages has been successfully decrypted, remove the chain.
-                    delete session.chains[base64.fromByteArray(new Uint8Array(ratchet.lastRemoteEphemeralKey))] // previousRatchet
+                delete previousReceivingRatchet.chainKey.key
+                session.oldRatchetList[session.oldRatchetList.length] = {
+                    added: Date.now(),
+                    ephemeralKey: ratchet.lastRemoteEphemeralKey,
                 }
+                this.logger.sendEvent(`1-1-decrypt:address=${this.remoteAddress.toString()}`, {
+                    functionName: 'maybeStepRatchet',
+                    info: `Moving a ratchet to oldRatchetList`,
+                })
             })
         }
 

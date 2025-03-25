@@ -419,18 +419,10 @@ export class GroupCipher {
                     existingSession.chains[base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey))]
                 if (previousChain !== undefined) {
                     await this.fillMessageKeys(previousChain, senderKey.previousCounter).then(function () {
-                        // in case there is some pending messages keep it for later
-                        if (Object.keys(previousChain.messageKeys).length > 0) {
-                            delete previousChain.chainKey.key
-                            existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
-                                added: Date.now(),
-                                signaturePublicKey: senderKey.previousChainSignatureKey!,
-                            }
-                        } else {
-                            // all the messages has been successfully decrypted, remove the chain.
-                            delete existingSession!.chains[
-                                base64.fromByteArray(new Uint8Array(senderKey.previousChainSignatureKey!))
-                            ] // previousChain
+                        delete previousChain.chainKey.key
+                        existingSession!.oldRatchetList[existingSession!.oldRatchetList.length] = {
+                            added: Date.now(),
+                            signaturePublicKey: senderKey.previousChainSignatureKey!,
                         }
                     })
                 } else {
