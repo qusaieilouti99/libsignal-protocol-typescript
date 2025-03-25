@@ -1,14 +1,14 @@
 {
-  "name": "@privacyresearch/libsignal-protocol-typescript",
+  "name": "@qusaieilouti99/libsignal-protocol-typescript",
   "version": "2.0.1",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
-  "repository": "https://github.com/privacyresearchgroup/libsignal-protocol-typescript",
+  "repository": "https://github.com/qusaieilouti99/libsignal-protocol-typescript",
   "author": "Rolfe Schmidt <rolfeschmidt@gmail.com>",
   "license": "GPL-3.0-only",
   "scripts": {
     "test": "jest --config jestconfig.json",
-    "lint": "eslint -c .eslintrc.js  '**/*.ts'",
+    "lint": "eslint -c .eslintrc.js \"**/*.ts\"",
     "format": "prettier \"**/*.{js,json,ts,tsx,md}\" \"**/.*.{js,json}\" --write --list-different --config prettier.config.js\n",
     "prepare": "yarn run build",
     "build": "tsc -d",
