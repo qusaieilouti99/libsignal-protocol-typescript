@@ -112,7 +112,7 @@ export class SignalProtocolStore implements StorageType {
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     addDevice(userId: string, device: number): void {}
 
-    async addPendingSenderKeyAtomically(
+    async saveSenderKey(
         address: string,
         senderKeyVersion: number,
         senderKey: SenderKey<string>

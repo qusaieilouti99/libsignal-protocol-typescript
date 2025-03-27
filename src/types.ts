@@ -58,11 +58,7 @@ export interface StorageType {
     getIdentityKeyPair: () => Promise<KeyPairType | undefined>
     getLocalRegistrationId: () => Promise<number | undefined>
     addDevice: (userId: string, device: number) => void
-    addPendingSenderKeyAtomically: (
-        address: string,
-        senderKeyVersion: number,
-        senderKey: SenderKey<string>
-    ) => Promise<void>
+    saveSenderKey: (address: string, senderKeyVersion: number, senderKey: SenderKey<string>) => Promise<void>
     isTrustedIdentity: (identifier: string, identityKey: ArrayBuffer, direction: Direction) => Promise<boolean>
     saveIdentity: (encodedAddress: string, publicKey: ArrayBuffer, nonblockingApproval?: boolean) => Promise<boolean>
 

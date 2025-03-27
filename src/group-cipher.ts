@@ -320,7 +320,7 @@ export class GroupCipher {
             senderKeyVersion: version,
             signaturePubKey: senderKey.signatureKey,
         })
-        await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        await this.storage.saveSenderKey(this.address.toString(), version, senderKey)
         this.logger.sendEvent(`group-create-session:address=${this.address.toString()}`, {
             functionName: 'createSenderSessionJob',
             info: `successfully added pending sender key`,
@@ -387,7 +387,7 @@ export class GroupCipher {
             senderKeyVersion: version,
             signaturePubKey: senderKey.signatureKey,
         })
-        await this.storage.addPendingSenderKeyAtomically(this.address.toString(), version, senderKey)
+        await this.storage.saveSenderKey(this.address.toString(), version, senderKey)
         this.logger.sendEvent(`group-reset-session:address=${this.address.toString()}`, {
             functionName: 'resetSenderSessionJob',
             info: `successfully added pending sender key`,
