@@ -219,14 +219,6 @@ export class SessionCipher {
             return Promise.resolve() // Already calculated
         }
 
-        if (counter - chain.chainKey.counter > 2000) {
-            this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
-                functionName: 'fillMessageKeys',
-                error: `Over 2000 messages into the future! for counter:${counter} and chainCounter:${chain.chainKey.counter}`,
-            })
-            throw new Error('Over 2000 messages into the future!')
-        }
-
         if (chain.chainKey.key === undefined) {
             this.logger.sendEvent(`1-1-encrypt&decrypt:address=${this.remoteAddress.toString()}`, {
                 functionName: 'fillMessageKeys',
