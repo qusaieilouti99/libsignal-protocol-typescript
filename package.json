@@ -1,6 +1,6 @@
 {
   "name": "@qusaieilouti99/libsignal-protocol-typescript",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
   "repository": "https://github.com/qusaieilouti99/libsignal-protocol-typescript",
