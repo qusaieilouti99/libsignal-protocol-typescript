@@ -4,10 +4,44 @@ import { KeyPairType } from '../types'
 import { AsyncCurve as AsyncCurveType } from '@privacyresearch/curve25519-typescript'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
-const webcrypto =
-    navigator.product !== 'ReactNative'
-        ? globalThis?.crypto || require('../../lib/msrcrypto')
-        : require('../../lib/msrcrypto') // globalThis?.crypto || window?.crypto || require('../../lib/msrcrypto')
+const getWebCrypto = (): globalThis.Crypto => {
+    // React Native specific handling - ONLY load msrCrypto if we're actually in RN
+    if (navigator.product === 'ReactNative') {
+        // Only try to load msrCrypto if we're actually in React Native AND don't have native crypto
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const msrCrypto = require('../msrcrypto')
+            return msrCrypto as globalThis.Crypto
+        } catch (e) {
+            throw new Error('React Native: No crypto implementation available.')
+        }
+    }
+
+    // Try browser Web Crypto API first (fastest and most secure)
+    if (typeof globalThis !== 'undefined' && globalThis.crypto && globalThis.crypto.subtle) {
+        return globalThis.crypto
+    }
+
+    if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+        return window.crypto as globalThis.Crypto
+    }
+
+    // Try Node.js Web Crypto ONLY if we're actually in Node.js environment
+    if (typeof process !== 'undefined' && process.versions && process.versions.node) {
+        try {
+            const nodeCrypto = eval('require')('crypto')
+            if (nodeCrypto.webcrypto) {
+                return nodeCrypto.webcrypto as globalThis.Crypto
+            }
+        } catch (e) {
+            // Continue to next fallback
+        }
+    }
+
+    throw new Error('No crypto implementation available. Please use a modern environment with Web Crypto API support.')
+}
+
+const webcrypto = getWebCrypto()
 
 export class Crypto {
     private _curve: Internal.AsyncCurve
